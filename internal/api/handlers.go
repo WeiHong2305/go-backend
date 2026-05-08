@@ -10,6 +10,16 @@ import (
 	"go-backend/internal/store"
 )
 
+func respondJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+func respondError(w http.ResponseWriter, status int, message string) {
+	respondJSON(w, status, map[string]string{"error": message})
+}
+
 func RootHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello World! You requested: %s", r.URL.Path)
 }
@@ -22,22 +32,23 @@ func CreateUserHandler(userStore store.UserStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var user model.User
 		if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-			http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
 
 		if user.Name == "" {
-			http.Error(w, "missing required fields (name)", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "name is required")
 			return
 		}
 
-		pk := userStore.Save(user)
+		id, err := userStore.Save(user)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to create user")
+			return
+		}
 
-		fmt.Printf("ID = %d\n", pk)
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(user)
+		user.ID = id
+		respondJSON(w, http.StatusCreated, user)
 	}
 }
 
@@ -47,32 +58,29 @@ func GetUserHandler(userStore store.UserStore) http.HandlerFunc {
 
 		idInt, err := strconv.Atoi(id)
 		if err != nil {
-			http.Error(w, "invalid user ID", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "invalid user ID")
 			return
 		}
 
-		user, ok := userStore.Get(idInt)
-		if !ok {
-			http.NotFound(w, r)
+		user, err := userStore.Get(idInt)
+		if err != nil {
+			respondError(w, http.StatusNotFound, "user not found")
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(user)
-
-		fmt.Printf("Name: %s\n", user.Name)
-		fmt.Printf("Active: %t\n", user.Active)
+		respondJSON(w, http.StatusOK, user)
 	}
 }
 
 func GetAllUsersHandler(userStore store.UserStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		users := userStore.GetAll()
+		users, err := userStore.GetAll()
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to retrieve users")
+			return
+		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(users)
+		respondJSON(w, http.StatusOK, users)
 	}
 }
 
@@ -82,16 +90,16 @@ func DeleteUserHandler(userStore store.UserStore) http.HandlerFunc {
 
 		idInt, err := strconv.Atoi(id)
 		if err != nil {
-			http.Error(w, "invalid user ID", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "invalid user ID")
 			return
 		}
 
-		if _, ok := userStore.Get(idInt); !ok {
-			http.NotFound(w, r)
+		err = userStore.Delete(idInt)
+		if err != nil {
+			respondError(w, http.StatusNotFound, "user not found")
 			return
 		}
 
-		userStore.Delete(idInt)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

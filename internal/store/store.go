@@ -2,17 +2,17 @@ package store
 
 import (
 	"database/sql"
-	"log"
+	"fmt"
 	"sync"
 
 	"go-backend/internal/model"
 )
 
 type UserStore interface {
-	Save(model.User) int
-	Get(int) (model.User, bool)
-	GetAll() []model.User
-	Delete(int)
+	Save(model.User) (int, error)
+	Get(int) (model.User, error)
+	GetAll() ([]model.User, error)
+	Delete(int) error
 }
 
 type memoryUserStore struct {
@@ -32,48 +32,48 @@ func NewPgUserStore(db *sql.DB) UserStore {
 	return &pgUserStore{db: db}
 }
 
-func (s *memoryUserStore) Save(u model.User) int {
+func (s *memoryUserStore) Save(u model.User) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := len(s.users) + 1
+	u.ID = id
 	s.users[id] = u
-	return id
+	return id, nil
 }
 
-func (s *pgUserStore) Save(u model.User) int {
-	query := `INSERT INTO users (name, active) VALUES ($1, $2) RETURNING id`
+func (s *pgUserStore) Save(u model.User) (int, error) {
+	query := `INSERT INTO users (name, active, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id`
 
 	var pk int
 	err := s.db.QueryRow(query, u.Name, u.Active).Scan(&pk)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return pk
+	return pk, err
 }
 
-func (s *memoryUserStore) Get(id int) (model.User, bool) {
+func (s *memoryUserStore) Get(id int) (model.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	user, ok := s.users[id]
-	return user, ok
+	if !ok {
+		return model.User{}, fmt.Errorf("user not found")
+	}
+	return user, nil
 }
 
-func (s *pgUserStore) Get(id int) (model.User, bool) {
-	query := "SELECT name, active FROM users WHERE id = $1"
+func (s *pgUserStore) Get(id int) (model.User, error) {
+	query := "SELECT id, name, active, created_at, updated_at FROM users WHERE id = $1"
 	user := model.User{}
 
-	err := s.db.QueryRow(query, id).Scan(&user.Name, &user.Active)
+	err := s.db.QueryRow(query, id).Scan(&user.ID, &user.Name, &user.Active, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return model.User{}, false
-		} else {
-			log.Fatal(err)
+			return model.User{}, fmt.Errorf("user not found")
 		}
+		return model.User{}, err
 	}
-	return user, true
+	return user, nil
 }
 
-func (s *memoryUserStore) GetAll() []model.User {
+func (s *memoryUserStore) GetAll() ([]model.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -81,43 +81,58 @@ func (s *memoryUserStore) GetAll() []model.User {
 	for _, user := range s.users {
 		users = append(users, user)
 	}
-	return users
+	return users, nil
 }
 
-func (s *pgUserStore) GetAll() []model.User {
+func (s *pgUserStore) GetAll() ([]model.User, error) {
 	users := []model.User{}
 
-	query := "SELECT name, active FROM users"
+	query := "SELECT id, name, active, created_at, updated_at FROM users"
 	rows, err := s.db.Query(query)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	defer rows.Close()
 
-	var user model.User
-
 	for rows.Next() {
-		err := rows.Scan(&user.Name, &user.Active)
+		var user model.User
+		err := rows.Scan(&user.ID, &user.Name, &user.Active, &user.CreatedAt, &user.UpdatedAt)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		users = append(users, user)
 	}
 
-	return users
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
 
-func (s *memoryUserStore) Delete(id int) {
+func (s *memoryUserStore) Delete(id int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.users[id]; !ok {
+		return fmt.Errorf("user not found")
+	}
 	delete(s.users, id)
+	return nil
 }
 
-func (s *pgUserStore) Delete(id int) {
+func (s *pgUserStore) Delete(id int) error {
 	query := "DELETE FROM users WHERE id = $1"
-	_, err := s.db.Exec(query, id)
+	result, err := s.db.Exec(query, id)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
 }
