@@ -1,18 +1,22 @@
 package store
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"go-backend/internal/model"
 )
 
 type UserStore interface {
-	Save(model.User) (int, error)
-	Get(int) (model.User, error)
-	GetAll() ([]model.User, error)
-	Delete(int) error
+	Save(context.Context, model.User) (int, error)
+	Get(context.Context, int) (model.User, error)
+	GetAll(context.Context) ([]model.User, error)
+	Update(context.Context, int, model.User) (model.User, error)
+	Delete(context.Context, int) error
 }
 
 type memoryUserStore struct {
@@ -32,48 +36,60 @@ func NewPgUserStore(db *sql.DB) UserStore {
 	return &pgUserStore{db: db}
 }
 
-func (s *memoryUserStore) Save(u model.User) (int, error) {
+func (s *memoryUserStore) Save(_ context.Context, u model.User) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	id := len(s.users) + 1
 	u.ID = id
 	s.users[id] = u
+
 	return id, nil
 }
 
-func (s *pgUserStore) Save(u model.User) (int, error) {
+func (s *pgUserStore) Save(ctx context.Context, u model.User) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
 	query := `INSERT INTO users (name, active, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id`
 
 	var pk int
-	err := s.db.QueryRow(query, u.Name, u.Active).Scan(&pk)
-	return pk, err
+	err := s.db.QueryRowContext(ctx, query, u.Name, u.Active).Scan(&pk)
+	if err != nil {
+		return 0, fmt.Errorf("save user: %w", err)
+	}
+	return pk, nil
 }
 
-func (s *memoryUserStore) Get(id int) (model.User, error) {
+func (s *memoryUserStore) Get(_ context.Context, id int) (model.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	user, ok := s.users[id]
 	if !ok {
-		return model.User{}, fmt.Errorf("user not found")
+		return model.User{}, ErrNotFound
 	}
 	return user, nil
 }
 
-func (s *pgUserStore) Get(id int) (model.User, error) {
+func (s *pgUserStore) Get(ctx context.Context, id int) (model.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
 	query := "SELECT id, name, active, created_at, updated_at FROM users WHERE id = $1"
 	user := model.User{}
 
-	err := s.db.QueryRow(query, id).Scan(&user.ID, &user.Name, &user.Active, &user.CreatedAt, &user.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, query, id).Scan(&user.ID, &user.Name, &user.Active, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return model.User{}, fmt.Errorf("user not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.User{}, ErrNotFound
 		}
-		return model.User{}, err
+		return model.User{}, fmt.Errorf("get user %d: %w", id, err)
 	}
 	return user, nil
 }
 
-func (s *memoryUserStore) GetAll() ([]model.User, error) {
+func (s *memoryUserStore) GetAll(_ context.Context) ([]model.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -84,55 +100,95 @@ func (s *memoryUserStore) GetAll() ([]model.User, error) {
 	return users, nil
 }
 
-func (s *pgUserStore) GetAll() ([]model.User, error) {
-	users := []model.User{}
+func (s *pgUserStore) GetAll(ctx context.Context) ([]model.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 
 	query := "SELECT id, name, active, created_at, updated_at FROM users"
-	rows, err := s.db.Query(query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query users: %w", err)
 	}
-
 	defer rows.Close()
 
+	users := make([]model.User, 0)
 	for rows.Next() {
 		var user model.User
-		err := rows.Scan(&user.ID, &user.Name, &user.Active, &user.CreatedAt, &user.UpdatedAt)
-		if err != nil {
-			return nil, err
+		if err := rows.Scan(&user.ID, &user.Name, &user.Active, &user.CreatedAt, &user.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan user row: %w", err)
 		}
 		users = append(users, user)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("iterate users: %w", err)
 	}
 
 	return users, nil
 }
 
-func (s *memoryUserStore) Delete(id int) error {
+func (s *memoryUserStore) Update(_ context.Context, id int, u model.User) (model.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	existing, ok := s.users[id]
+	if !ok {
+		return model.User{}, ErrNotFound
+	}
+	u.ID = id
+	u.CreatedAt = existing.CreatedAt
+	u.UpdatedAt = time.Now()
+	s.users[id] = u
+	return u, nil
+}
+
+func (s *pgUserStore) Update(ctx context.Context, id int, u model.User) (model.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	query := `UPDATE users SET name = $1, active = $2, updated_at = NOW()
+		WHERE id = $3
+		RETURNING id, name, active, created_at, updated_at`
+	updated := model.User{}
+	err := s.db.QueryRowContext(ctx, query, u.Name, u.Active, id).Scan(
+		&updated.ID, &updated.Name, &updated.Active, &updated.CreatedAt, &updated.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.User{}, ErrNotFound
+		}
+		return model.User{}, fmt.Errorf("update user %d: %w", id, err)
+	}
+	return updated, nil
+}
+
+func (s *memoryUserStore) Delete(_ context.Context, id int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if _, ok := s.users[id]; !ok {
-		return fmt.Errorf("user not found")
+		return ErrNotFound
 	}
 	delete(s.users, id)
 	return nil
 }
 
-func (s *pgUserStore) Delete(id int) error {
+func (s *pgUserStore) Delete(ctx context.Context, id int) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
 	query := "DELETE FROM users WHERE id = $1"
-	result, err := s.db.Exec(query, id)
+	result, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("delete user %d: %w", id, err)
 	}
+
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("delete user %d rows affected: %w", id, err)
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("user not found")
+		return ErrNotFound
 	}
 	return nil
 }
