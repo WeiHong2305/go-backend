@@ -11,8 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"go-backend/internal/model"
-	"go-backend/internal/store"
+	"go-backend/internal/service"
 )
 
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
@@ -29,14 +28,16 @@ func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
 
-// mapStoreError translates store/DB errors into HTTP responses.
-// Returns true if a response was written.
-func mapStoreError(w http.ResponseWriter, err error) bool {
+func mapServiceError(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, service.ErrNotFound) {
 		respondError(w, http.StatusNotFound, "user not found")
+		return true
+	}
+	if errors.Is(err, service.ErrValidation) {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return true
 	}
 	if errors.Is(err, context.Canceled) {
@@ -47,7 +48,7 @@ func mapStoreError(w http.ResponseWriter, err error) bool {
 		respondError(w, http.StatusGatewayTimeout, "request timed out")
 		return true
 	}
-	slog.Error("store error", "error", err)
+	slog.Error("service error", "error", err)
 	respondError(w, http.StatusInternalServerError, "internal server error")
 	return true
 }
@@ -70,7 +71,7 @@ func HealthHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func CreateUserHandler(userStore store.UserStore) http.HandlerFunc {
+func CreateUserHandler(svc service.UserService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
@@ -87,30 +88,16 @@ func CreateUserHandler(userStore store.UserStore) http.HandlerFunc {
 			return
 		}
 
-		if req.Name == "" {
-			respondError(w, http.StatusBadRequest, "name is required")
+		user, err := svc.CreateUser(r.Context(), req.Name, req.Active)
+		if mapServiceError(w, err) {
 			return
 		}
 
-		user := model.User{Name: req.Name}
-		if req.Active != nil {
-			user.Active = *req.Active
-		} else {
-			user.Active = true
-		}
-
-		id, err := userStore.Save(r.Context(), user)
-		if err != nil {
-			mapStoreError(w, err)
-			return
-		}
-
-		user.ID = id
 		respondJSON(w, http.StatusCreated, user)
 	}
 }
 
-func GetUserHandler(userStore store.UserStore) http.HandlerFunc {
+func GetUserHandler(svc service.UserService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idInt, err := parseUserID(r.PathValue("id"))
 		if err != nil {
@@ -118,8 +105,8 @@ func GetUserHandler(userStore store.UserStore) http.HandlerFunc {
 			return
 		}
 
-		user, err := userStore.Get(r.Context(), idInt)
-		if mapStoreError(w, err) {
+		user, err := svc.GetUser(r.Context(), idInt)
+		if mapServiceError(w, err) {
 			return
 		}
 
@@ -127,20 +114,17 @@ func GetUserHandler(userStore store.UserStore) http.HandlerFunc {
 	}
 }
 
-func GetAllUsersHandler(userStore store.UserStore) http.HandlerFunc {
+func GetAllUsersHandler(svc service.UserService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		users, err := userStore.GetAll(r.Context())
-		if mapStoreError(w, err) {
+		users, err := svc.GetAllUsers(r.Context())
+		if mapServiceError(w, err) {
 			return
-		}
-		if users == nil {
-			users = []model.User{}
 		}
 		respondJSON(w, http.StatusOK, users)
 	}
 }
 
-func UpdateUserHandler(userStore store.UserStore) http.HandlerFunc {
+func UpdateUserHandler(svc service.UserService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idInt, err := parseUserID(r.PathValue("id"))
 		if err != nil {
@@ -162,27 +146,15 @@ func UpdateUserHandler(userStore store.UserStore) http.HandlerFunc {
 			return
 		}
 
-		if req.Name == "" {
-			respondError(w, http.StatusBadRequest, "name is required")
-			return
-		}
-
-		patch := model.User{Name: req.Name}
-		if req.Active != nil {
-			patch.Active = *req.Active
-		} else {
-			patch.Active = true
-		}
-
-		updated, err := userStore.Update(r.Context(), idInt, patch)
-		if mapStoreError(w, err) {
+		updated, err := svc.UpdateUser(r.Context(), idInt, req.Name, req.Active)
+		if mapServiceError(w, err) {
 			return
 		}
 		respondJSON(w, http.StatusOK, updated)
 	}
 }
 
-func DeleteUserHandler(userStore store.UserStore) http.HandlerFunc {
+func DeleteUserHandler(svc service.UserService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idInt, err := parseUserID(r.PathValue("id"))
 		if err != nil {
@@ -190,7 +162,7 @@ func DeleteUserHandler(userStore store.UserStore) http.HandlerFunc {
 			return
 		}
 
-		if err := userStore.Delete(r.Context(), idInt); mapStoreError(w, err) {
+		if err := svc.DeleteUser(r.Context(), idInt); mapServiceError(w, err) {
 			return
 		}
 

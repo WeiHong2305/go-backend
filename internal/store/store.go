@@ -11,7 +11,7 @@ import (
 	"go-backend/internal/model"
 )
 
-type UserStore interface {
+type UserRepository interface {
 	Save(context.Context, model.User) (int, error)
 	Get(context.Context, int) (model.User, error)
 	GetAll(context.Context) ([]model.User, error)

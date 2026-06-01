@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go-backend/internal/api"
+	"go-backend/internal/service"
 	"go-backend/internal/store"
 
 	_ "github.com/lib/pq"
@@ -50,16 +51,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	users := store.NewPgUserStore(db)
+	userRepo := store.NewPgUserStore(db)
+	userSvc := service.NewUserService(userRepo)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", api.RootHandler)
 	mux.HandleFunc("/health", api.HealthHandler(db))
-	mux.HandleFunc("POST /users", api.CreateUserHandler(users))
-	mux.HandleFunc("GET /users/{id}", api.GetUserHandler(users))
-	mux.HandleFunc("GET /users", api.GetAllUsersHandler(users))
-	mux.HandleFunc("PUT /users/{id}", api.UpdateUserHandler(users))
-	mux.HandleFunc("DELETE /users/{id}", api.DeleteUserHandler(users))
+	mux.HandleFunc("POST /users", api.CreateUserHandler(userSvc))
+	mux.HandleFunc("GET /users/{id}", api.GetUserHandler(userSvc))
+	mux.HandleFunc("GET /users", api.GetAllUsersHandler(userSvc))
+	mux.HandleFunc("PUT /users/{id}", api.UpdateUserHandler(userSvc))
+	mux.HandleFunc("DELETE /users/{id}", api.DeleteUserHandler(userSvc))
 
 	handler := api.RequestLog(api.Recover(mux))
 
