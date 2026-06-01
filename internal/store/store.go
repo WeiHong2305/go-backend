@@ -19,24 +19,24 @@ type UserStore interface {
 	Delete(context.Context, int) error
 }
 
-type memoryUserStore struct {
+type MemoryUserStore struct {
 	mu    sync.RWMutex
 	users map[int]model.User
 }
 
-type pgUserStore struct {
+type PgUserStore struct {
 	db *sql.DB
 }
 
-func NewMemoryUserStore() UserStore {
-	return &memoryUserStore{users: make(map[int]model.User)}
+func NewMemoryUserStore() *MemoryUserStore {
+	return &MemoryUserStore{users: make(map[int]model.User)}
 }
 
-func NewPgUserStore(db *sql.DB) UserStore {
-	return &pgUserStore{db: db}
+func NewPgUserStore(db *sql.DB) *PgUserStore {
+	return &PgUserStore{db: db}
 }
 
-func (s *memoryUserStore) Save(_ context.Context, u model.User) (int, error) {
+func (s *MemoryUserStore) Save(_ context.Context, u model.User) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -47,7 +47,7 @@ func (s *memoryUserStore) Save(_ context.Context, u model.User) (int, error) {
 	return id, nil
 }
 
-func (s *pgUserStore) Save(ctx context.Context, u model.User) (int, error) {
+func (s *PgUserStore) Save(ctx context.Context, u model.User) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -61,7 +61,7 @@ func (s *pgUserStore) Save(ctx context.Context, u model.User) (int, error) {
 	return pk, nil
 }
 
-func (s *memoryUserStore) Get(_ context.Context, id int) (model.User, error) {
+func (s *MemoryUserStore) Get(_ context.Context, id int) (model.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -72,7 +72,7 @@ func (s *memoryUserStore) Get(_ context.Context, id int) (model.User, error) {
 	return user, nil
 }
 
-func (s *pgUserStore) Get(ctx context.Context, id int) (model.User, error) {
+func (s *PgUserStore) Get(ctx context.Context, id int) (model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -89,7 +89,7 @@ func (s *pgUserStore) Get(ctx context.Context, id int) (model.User, error) {
 	return user, nil
 }
 
-func (s *memoryUserStore) GetAll(_ context.Context) ([]model.User, error) {
+func (s *MemoryUserStore) GetAll(_ context.Context) ([]model.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -100,7 +100,7 @@ func (s *memoryUserStore) GetAll(_ context.Context) ([]model.User, error) {
 	return users, nil
 }
 
-func (s *pgUserStore) GetAll(ctx context.Context) ([]model.User, error) {
+func (s *PgUserStore) GetAll(ctx context.Context) ([]model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -127,7 +127,7 @@ func (s *pgUserStore) GetAll(ctx context.Context) ([]model.User, error) {
 	return users, nil
 }
 
-func (s *memoryUserStore) Update(_ context.Context, id int, u model.User) (model.User, error) {
+func (s *MemoryUserStore) Update(_ context.Context, id int, u model.User) (model.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -142,7 +142,7 @@ func (s *memoryUserStore) Update(_ context.Context, id int, u model.User) (model
 	return u, nil
 }
 
-func (s *pgUserStore) Update(ctx context.Context, id int, u model.User) (model.User, error) {
+func (s *PgUserStore) Update(ctx context.Context, id int, u model.User) (model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -162,7 +162,7 @@ func (s *pgUserStore) Update(ctx context.Context, id int, u model.User) (model.U
 	return updated, nil
 }
 
-func (s *memoryUserStore) Delete(_ context.Context, id int) error {
+func (s *MemoryUserStore) Delete(_ context.Context, id int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -173,7 +173,7 @@ func (s *memoryUserStore) Delete(_ context.Context, id int) error {
 	return nil
 }
 
-func (s *pgUserStore) Delete(ctx context.Context, id int) error {
+func (s *PgUserStore) Delete(ctx context.Context, id int) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
