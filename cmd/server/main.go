@@ -36,6 +36,7 @@ func main() {
 
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 	db.SetConnMaxLifetime(time.Hour)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
