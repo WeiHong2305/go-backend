@@ -12,7 +12,7 @@ type MovieService interface {
 	CreateMovie(ctx context.Context, movie model.Movie) (model.Movie, error)
 	GetMovie(ctx context.Context, id int64) (model.Movie, error)
 	GetAllMovies(ctx context.Context) ([]model.Movie, error)
-	UpdateMovie(ctx context.Context, id int64, movie model.Movie) (model.Movie, error)
+	UpdateMovie(ctx context.Context, id int64, patch model.MoviePatch) (model.Movie, error)
 	DeleteMovie(ctx context.Context, id int64) error
 }
 
@@ -57,12 +57,36 @@ func (s *movieService) GetAllMovies(ctx context.Context) ([]model.Movie, error) 
 	return movies, nil
 }
 
-func (s *movieService) UpdateMovie(ctx context.Context, id int64, movie model.Movie) (model.Movie, error) {
-	if movie.Title == "" {
+func (s *movieService) UpdateMovie(ctx context.Context, id int64, patch model.MoviePatch) (model.Movie, error) {
+	existing, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return model.Movie{}, mapRepoError(err)
+	}
+
+	if patch.Title != nil {
+		existing.Title = *patch.Title
+	}
+	if patch.DirectorID != nil {
+		existing.DirectorID = *patch.DirectorID
+	}
+	if patch.ReleaseYear != nil {
+		existing.ReleaseYear = *patch.ReleaseYear
+	}
+	if patch.RuntimeMinutes != nil {
+		existing.RuntimeMinutes = patch.RuntimeMinutes
+	}
+	if patch.Genre != nil {
+		existing.Genre = patch.Genre
+	}
+	if patch.Rating != nil {
+		existing.Rating = patch.Rating
+	}
+
+	if existing.Title == "" {
 		return model.Movie{}, fmt.Errorf("title is required: %w", ErrValidation)
 	}
 
-	updated, err := s.repo.Update(ctx, id, movie)
+	updated, err := s.repo.Update(ctx, id, existing)
 	if err != nil {
 		return model.Movie{}, mapRepoError(err)
 	}

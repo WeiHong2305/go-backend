@@ -54,7 +54,7 @@ func main() {
 	mux.HandleFunc("/health", api.HealthHandler(db))
 	mux.HandleFunc("POST /movies", api.CreateMovieHandler(movieSvc))
 	mux.HandleFunc("GET /movies/{id}", api.GetMovieHandler(movieSvc))
-	mux.HandleFunc("PUT /movies/{id}", api.UpdateMovieHandler(movieSvc))
+	mux.HandleFunc("PATCH /movies/{id}", api.UpdateMovieHandler(movieSvc))
 	mux.HandleFunc("DELETE /movies/{id}", api.DeleteMovieHandler(movieSvc))
 	mux.HandleFunc("GET /movies", api.GetAllMoviesHandler(movieSvc))
 

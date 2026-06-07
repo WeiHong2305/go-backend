@@ -145,14 +145,7 @@ func UpdateMovieHandler(svc service.MovieService) http.HandlerFunc {
 		}
 
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-		var req struct {
-			Title          string   `json:"title"`
-			DirectorID     int64    `json:"director_id"`
-			ReleaseYear    int      `json:"release_year"`
-			RuntimeMinutes *int     `json:"runtime_minutes,omitempty"`
-			Genre          *string  `json:"genre,omitempty"`
-			Rating         *float64 `json:"rating,omitempty"`
-		}
+		var req model.MoviePatch
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 				respondError(w, http.StatusRequestEntityTooLarge, "request body too large")
@@ -162,14 +155,7 @@ func UpdateMovieHandler(svc service.MovieService) http.HandlerFunc {
 			return
 		}
 
-		updated, err := svc.UpdateMovie(r.Context(), id, model.Movie{
-			Title:          req.Title,
-			DirectorID:     req.DirectorID,
-			ReleaseYear:    req.ReleaseYear,
-			RuntimeMinutes: req.RuntimeMinutes,
-			Genre:          req.Genre,
-			Rating:         req.Rating,
-		})
+		updated, err := svc.UpdateMovie(r.Context(), id, req)
 		if mapServiceError(w, err) {
 			return
 		}
