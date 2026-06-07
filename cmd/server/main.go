@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"go-backend/internal/api"
+	"go-backend/internal/repository"
 	"go-backend/internal/service"
-	"go-backend/internal/store"
 
 	_ "github.com/lib/pq"
 )
@@ -46,7 +46,7 @@ func main() {
 	}
 	cancel()
 
-	movieRepo := store.NewPgMovieStore(db)
+	movieRepo := repository.NewPgMovieRepository(db)
 	movieSvc := service.NewMovieService(movieRepo)
 
 	mux := http.NewServeMux()

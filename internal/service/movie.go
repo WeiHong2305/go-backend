@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go-backend/internal/model"
 	"go-backend/internal/repository"
@@ -23,7 +24,7 @@ func NewMovieService(repo repository.MovieRepository) *movieService {
 	return &movieService{repo: repo}
 }
 
-func (s *movieService) CreateMovie(ctx context.Context, title string, director string, releaseYear int) (model.Movie, error) {
+func (s *movieService) CreateMovie(ctx context.Context, title, director string, releaseYear int) (model.Movie, error) {
 	if title == "" {
 		return model.Movie{}, fmt.Errorf("title is required: %w", ErrValidation)
 	}
@@ -36,4 +37,50 @@ func (s *movieService) CreateMovie(ctx context.Context, title string, director s
 
 	movie.ID = id
 	return movie, nil
+}
+
+func (s *movieService) GetMovie(ctx context.Context, id int64) (model.Movie, error) {
+	movie, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return model.Movie{}, mapRepoError(err)
+	}
+	return movie, nil
+}
+
+func (s *movieService) GetAllMovies(ctx context.Context) ([]model.Movie, error) {
+	movies, err := s.repo.GetAll(ctx)
+	if err != nil {
+		return nil, mapRepoError(err)
+	}
+	if movies == nil {
+		movies = []model.Movie{}
+	}
+	return movies, nil
+}
+
+func (s *movieService) UpdateMovie(ctx context.Context, id int64, title, director string, releaseYear int) (model.Movie, error) {
+	if title == "" {
+		return model.Movie{}, fmt.Errorf("title is required: %w", ErrValidation)
+	}
+
+	patch := model.Movie{ID: id, Title: title, Director: director, ReleaseYear: releaseYear}
+	updated, err := s.repo.Update(ctx, id, patch)
+	if err != nil {
+		return model.Movie{}, mapRepoError(err)
+	}
+	return updated, nil
+}
+
+func (s *movieService) DeleteMovie(ctx context.Context, id int64) error {
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return mapRepoError(err)
+	}
+	return nil
+}
+
+func mapRepoError(err error) error {
+	if errors.Is(err, repository.ErrNotFound) {
+		return ErrNotFound
+	}
+	return err
 }

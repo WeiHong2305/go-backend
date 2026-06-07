@@ -33,7 +33,7 @@ func mapServiceError(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	if errors.Is(err, service.ErrNotFound) {
-		respondError(w, http.StatusNotFound, "user not found")
+		respondError(w, http.StatusNotFound, "not found")
 		return true
 	}
 	if errors.Is(err, service.ErrValidation) {
@@ -71,7 +71,7 @@ func HealthHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func createMovieHandler(svc service.MovieService) http.HandlerFunc {
+func CreateMovieHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
@@ -98,45 +98,46 @@ func createMovieHandler(svc service.MovieService) http.HandlerFunc {
 	}
 }
 
-func GetUserHandler(svc service.UserService) http.HandlerFunc {
+func GetMovieHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		idInt, err := parseUserID(r.PathValue("id"))
+		id, err := parseMovieID(r.PathValue("id"))
 		if err != nil {
-			respondError(w, http.StatusBadRequest, "invalid user ID")
+			respondError(w, http.StatusBadRequest, "invalid movie ID")
 			return
 		}
 
-		user, err := svc.GetUser(r.Context(), idInt)
+		movie, err := svc.GetMovie(r.Context(), id)
 		if mapServiceError(w, err) {
 			return
 		}
 
-		respondJSON(w, http.StatusOK, user)
+		respondJSON(w, http.StatusOK, movie)
 	}
 }
 
-func GetAllUsersHandler(svc service.UserService) http.HandlerFunc {
+func GetAllMoviesHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		users, err := svc.GetAllUsers(r.Context())
+		movies, err := svc.GetAllMovies(r.Context())
 		if mapServiceError(w, err) {
 			return
 		}
-		respondJSON(w, http.StatusOK, users)
+		respondJSON(w, http.StatusOK, movies)
 	}
 }
 
-func UpdateUserHandler(svc service.UserService) http.HandlerFunc {
+func UpdateMovieHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		idInt, err := parseUserID(r.PathValue("id"))
+		id, err := parseMovieID(r.PathValue("id"))
 		if err != nil {
-			respondError(w, http.StatusBadRequest, "invalid user ID")
+			respondError(w, http.StatusBadRequest, "invalid movie ID")
 			return
 		}
 
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		var req struct {
-			Name   string `json:"name"`
-			Active *bool  `json:"active"`
+			Title       string `json:"title"`
+			Director    string `json:"director"`
+			ReleaseYear int    `json:"release_year"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
@@ -147,7 +148,7 @@ func UpdateUserHandler(svc service.UserService) http.HandlerFunc {
 			return
 		}
 
-		updated, err := svc.UpdateUser(r.Context(), idInt, req.Name, req.Active)
+		updated, err := svc.UpdateMovie(r.Context(), id, req.Title, req.Director, req.ReleaseYear)
 		if mapServiceError(w, err) {
 			return
 		}
@@ -155,15 +156,15 @@ func UpdateUserHandler(svc service.UserService) http.HandlerFunc {
 	}
 }
 
-func DeleteUserHandler(svc service.UserService) http.HandlerFunc {
+func DeleteMovieHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		idInt, err := parseUserID(r.PathValue("id"))
+		id, err := parseMovieID(r.PathValue("id"))
 		if err != nil {
-			respondError(w, http.StatusBadRequest, "invalid user ID")
+			respondError(w, http.StatusBadRequest, "invalid movie ID")
 			return
 		}
 
-		if err := svc.DeleteUser(r.Context(), idInt); mapServiceError(w, err) {
+		if err := svc.DeleteMovie(r.Context(), id); mapServiceError(w, err) {
 			return
 		}
 
@@ -171,8 +172,8 @@ func DeleteUserHandler(svc service.UserService) http.HandlerFunc {
 	}
 }
 
-func parseUserID(id string) (int, error) {
-	n, err := strconv.Atoi(id)
+func parseMovieID(id string) (int64, error) {
+	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("invalid id: %w", err)
 	}
