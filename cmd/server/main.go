@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -46,11 +45,6 @@ func main() {
 		os.Exit(1)
 	}
 	cancel()
-
-	if err := createUsersTable(db); err != nil {
-		slog.Error("failed to create users table", "error", err)
-		os.Exit(1)
-	}
 
 	userRepo := store.NewPgUserStore(db)
 	userSvc := service.NewUserService(userRepo)
@@ -95,19 +89,4 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("server exited")
-}
-
-func createUsersTable(db *sql.DB) error {
-	query := `CREATE TABLE IF NOT EXISTS users (
-		id SERIAL PRIMARY KEY,
-		name varchar(100) NOT NULL,
-		active boolean DEFAULT true,
-		created_at timestamp DEFAULT NOW(),
-		updated_at timestamp DEFAULT NOW()
-	)`
-	_, err := db.Exec(query)
-	if err != nil {
-		return fmt.Errorf("create users table: %w", err)
-	}
-	return nil
 }
