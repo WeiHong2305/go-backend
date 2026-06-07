@@ -34,10 +34,12 @@ func mapServiceError(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	if errors.Is(err, service.ErrNotFound) {
+		slog.Debug("not found", "error", err)
 		respondError(w, http.StatusNotFound, "not found")
 		return true
 	}
 	if errors.Is(err, service.ErrValidation) {
+		slog.Debug("validation error", "error", err)
 		respondError(w, http.StatusBadRequest, err.Error())
 		return true
 	}
@@ -46,6 +48,7 @@ func mapServiceError(w http.ResponseWriter, err error) bool {
 		return true
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
+		slog.Warn("request timed out", "error", err)
 		respondError(w, http.StatusGatewayTimeout, "request timed out")
 		return true
 	}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,7 +19,18 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	var loglevel slog.Level
+	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
+	case "debug":
+		loglevel = slog.LevelDebug
+	case "warn":
+		loglevel = slog.LevelWarn
+	case "error":
+		loglevel = slog.LevelError
+	default:
+		loglevel = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: loglevel})))
 
 	connStr := os.Getenv("DATABASE_URL")
 	if connStr == "" {
