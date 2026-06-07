@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"go-backend/internal/model"
 	"go-backend/internal/service"
 )
 
@@ -76,9 +77,12 @@ func CreateMovieHandler(svc service.MovieService) http.HandlerFunc {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
 		var req struct {
-			Title       string `json:"title"`
-			Director    string `json:"director"`
-			ReleaseYear int    `json:"release_year"`
+			Title          string   `json:"title"`
+			DirectorID     int64    `json:"director_id"`
+			ReleaseYear    int      `json:"release_year"`
+			RuntimeMinutes *int     `json:"runtime_minutes,omitempty"`
+			Genre          *string  `json:"genre,omitempty"`
+			Rating         *float64 `json:"rating,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
@@ -89,7 +93,14 @@ func CreateMovieHandler(svc service.MovieService) http.HandlerFunc {
 			return
 		}
 
-		movie, err := svc.CreateMovie(r.Context(), req.Title, req.Director, req.ReleaseYear)
+		movie, err := svc.CreateMovie(r.Context(), model.Movie{
+			Title:          req.Title,
+			DirectorID:     req.DirectorID,
+			ReleaseYear:    req.ReleaseYear,
+			RuntimeMinutes: req.RuntimeMinutes,
+			Genre:          req.Genre,
+			Rating:         req.Rating,
+		})
 		if mapServiceError(w, err) {
 			return
 		}
@@ -135,9 +146,12 @@ func UpdateMovieHandler(svc service.MovieService) http.HandlerFunc {
 
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		var req struct {
-			Title       string `json:"title"`
-			Director    string `json:"director"`
-			ReleaseYear int    `json:"release_year"`
+			Title          string   `json:"title"`
+			DirectorID     int64    `json:"director_id"`
+			ReleaseYear    int      `json:"release_year"`
+			RuntimeMinutes *int     `json:"runtime_minutes,omitempty"`
+			Genre          *string  `json:"genre,omitempty"`
+			Rating         *float64 `json:"rating,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
@@ -148,7 +162,14 @@ func UpdateMovieHandler(svc service.MovieService) http.HandlerFunc {
 			return
 		}
 
-		updated, err := svc.UpdateMovie(r.Context(), id, req.Title, req.Director, req.ReleaseYear)
+		updated, err := svc.UpdateMovie(r.Context(), id, model.Movie{
+			Title:          req.Title,
+			DirectorID:     req.DirectorID,
+			ReleaseYear:    req.ReleaseYear,
+			RuntimeMinutes: req.RuntimeMinutes,
+			Genre:          req.Genre,
+			Rating:         req.Rating,
+		})
 		if mapServiceError(w, err) {
 			return
 		}

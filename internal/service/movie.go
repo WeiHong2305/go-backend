@@ -9,10 +9,10 @@ import (
 )
 
 type MovieService interface {
-	CreateMovie(ctx context.Context, title, director string, releaseYear int) (model.Movie, error)
+	CreateMovie(ctx context.Context, movie model.Movie) (model.Movie, error)
 	GetMovie(ctx context.Context, id int64) (model.Movie, error)
 	GetAllMovies(ctx context.Context) ([]model.Movie, error)
-	UpdateMovie(ctx context.Context, id int64, title, director string, releaseYear int) (model.Movie, error)
+	UpdateMovie(ctx context.Context, id int64, movie model.Movie) (model.Movie, error)
 	DeleteMovie(ctx context.Context, id int64) error
 }
 
@@ -24,12 +24,11 @@ func NewMovieService(repo repository.MovieRepository) *movieService {
 	return &movieService{repo: repo}
 }
 
-func (s *movieService) CreateMovie(ctx context.Context, title, director string, releaseYear int) (model.Movie, error) {
-	if title == "" {
+func (s *movieService) CreateMovie(ctx context.Context, movie model.Movie) (model.Movie, error) {
+	if movie.Title == "" {
 		return model.Movie{}, fmt.Errorf("title is required: %w", ErrValidation)
 	}
 
-	movie := model.Movie{Title: title, Director: director, ReleaseYear: releaseYear}
 	id, err := s.repo.Save(ctx, movie)
 	if err != nil {
 		return model.Movie{}, mapRepoError(err)
@@ -58,13 +57,12 @@ func (s *movieService) GetAllMovies(ctx context.Context) ([]model.Movie, error) 
 	return movies, nil
 }
 
-func (s *movieService) UpdateMovie(ctx context.Context, id int64, title, director string, releaseYear int) (model.Movie, error) {
-	if title == "" {
+func (s *movieService) UpdateMovie(ctx context.Context, id int64, movie model.Movie) (model.Movie, error) {
+	if movie.Title == "" {
 		return model.Movie{}, fmt.Errorf("title is required: %w", ErrValidation)
 	}
 
-	patch := model.Movie{ID: id, Title: title, Director: director, ReleaseYear: releaseYear}
-	updated, err := s.repo.Update(ctx, id, patch)
+	updated, err := s.repo.Update(ctx, id, movie)
 	if err != nil {
 		return model.Movie{}, mapRepoError(err)
 	}
