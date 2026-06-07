@@ -46,17 +46,17 @@ func main() {
 	}
 	cancel()
 
-	userRepo := store.NewPgUserStore(db)
-	userSvc := service.NewUserService(userRepo)
+	movieRepo := store.NewPgMovieStore(db)
+	movieSvc := service.NewMovieService(movieRepo)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", api.RootHandler)
 	mux.HandleFunc("/health", api.HealthHandler(db))
-	mux.HandleFunc("POST /users", api.CreateUserHandler(userSvc))
-	mux.HandleFunc("GET /users/{id}", api.GetUserHandler(userSvc))
-	mux.HandleFunc("GET /users", api.GetAllUsersHandler(userSvc))
-	mux.HandleFunc("PUT /users/{id}", api.UpdateUserHandler(userSvc))
-	mux.HandleFunc("DELETE /users/{id}", api.DeleteUserHandler(userSvc))
+	mux.HandleFunc("POST /movies", api.CreateMovieHandler(movieSvc))
+	mux.HandleFunc("GET /movies/{id}", api.GetMovieHandler(movieSvc))
+	mux.HandleFunc("PUT /movies/{id}", api.UpdateMovieHandler(movieSvc))
+	mux.HandleFunc("DELETE /movies/{id}", api.DeleteMovieHandler(movieSvc))
+	mux.HandleFunc("GET /movies", api.GetAllMoviesHandler(movieSvc))
 
 	handler := api.RequestLog(api.Recover(mux))
 

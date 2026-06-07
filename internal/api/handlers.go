@@ -71,13 +71,14 @@ func HealthHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func CreateUserHandler(svc service.UserService) http.HandlerFunc {
+func createMovieHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
 		var req struct {
-			Name   string `json:"name"`
-			Active *bool  `json:"active"`
+			Title       string `json:"title"`
+			Director    string `json:"director"`
+			ReleaseYear int    `json:"release_year"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
@@ -88,12 +89,12 @@ func CreateUserHandler(svc service.UserService) http.HandlerFunc {
 			return
 		}
 
-		user, err := svc.CreateUser(r.Context(), req.Name, req.Active)
+		movie, err := svc.CreateMovie(r.Context(), req.Title, req.Director, req.ReleaseYear)
 		if mapServiceError(w, err) {
 			return
 		}
 
-		respondJSON(w, http.StatusCreated, user)
+		respondJSON(w, http.StatusCreated, movie)
 	}
 }
 
