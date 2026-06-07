@@ -42,7 +42,7 @@ func (s *MemoryMovieStore) Get(_ context.Context, id int64) (model.Movie, error)
 
 	movie, exists := s.movies[id]
 	if !exists {
-		return model.Movie{}, fmt.Errorf("movie with ID %d not found", id)
+		return model.Movie{}, fmt.Errorf("movie %d: %w", id, ErrNotFound)
 	}
 	return movie, nil
 }
@@ -64,7 +64,7 @@ func (s *MemoryMovieStore) Update(_ context.Context, id int64, m model.Movie) (m
 
 	existing, exists := s.movies[id]
 	if !exists {
-		return model.Movie{}, fmt.Errorf("movie with ID %d not found", id)
+		return model.Movie{}, fmt.Errorf("movie %d: %w", id, ErrNotFound)
 	}
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
@@ -78,7 +78,7 @@ func (s *MemoryMovieStore) Delete(_ context.Context, id int64) error {
 	defer s.mu.Unlock()
 
 	if _, exists := s.movies[id]; !exists {
-		return fmt.Errorf("movie with ID %d not found", id)
+		return fmt.Errorf("movie %d: %w", id, ErrNotFound)
 	}
 	delete(s.movies, id)
 	return nil
