@@ -237,5 +237,35 @@ func SignUpHandler(svc service.UserService) http.HandlerFunc {
 		}
 		respondJSON(w, http.StatusCreated, user)
 	}
+}
 
+func LogInHandler(svc service.UserService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
+		var req struct {
+			Email    string `json:"email" validate:"required,email"`
+			Password string `json:"password" validate:"required,min=8,max=72"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				respondError(w, http.StatusRequestEntityTooLarge, "request body too large")
+				return
+			}
+			respondError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+
+		if err := validate.Struct(req); err != nil {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		tokenString, err := svc.LogIn(r.Context(), req.Email, req.Password)
+		if mapServiceError(w, err) {
+			return
+		}
+		respondJSON(w, http.StatusOK, {"token": tokenString})
+	}
 }

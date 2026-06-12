@@ -13,6 +13,7 @@ import (
 
 type UserRepository interface {
 	Create(context.Context, model.User) (model.User, error)
+	Get(context.Context, string) (model.User, error)
 }
 
 type PgUserRepository struct {
@@ -36,6 +37,22 @@ func (r *PgUserRepository) Create(ctx context.Context, user model.User) (model.U
 			return model.User{}, fmt.Errorf("%w: %s", ErrDuplicateEmail, user.Email)
 		}
 		return model.User{}, fmt.Errorf("failed to save user: %w", err)
+	}
+	return user, nil
+}
+
+func (r *PgUserRepository) Get(ctx context.Context, email string) (model.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	var user model.User
+	query := `SELECT * FROM users WHERE email = $1`
+	err := r.db.QueryRowContext(ctx, query, email).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &user.CreatedAt, &user.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.User{}, fmt.Errorf("%w: %s", ErrNotFound, email)
+		}
+		return model.User{}, fmt.Errorf("failed to fetch user: %w", err)
 	}
 	return user, nil
 }
