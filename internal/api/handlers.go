@@ -43,6 +43,11 @@ func mapServiceError(w http.ResponseWriter, err error) bool {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return true
 	}
+	if errors.Is(err, service.ErrConflict) {
+		slog.Debug("conflict", "error", err)
+		respondError(w, http.StatusConflict, err.Error())
+		return true
+	}
 	if errors.Is(err, context.Canceled) {
 		// Client disconnected; nothing useful to send.
 		return true
