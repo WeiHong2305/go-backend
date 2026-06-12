@@ -61,8 +61,14 @@ func main() {
 	movieRepo := repository.NewPgMovieRepository(db)
 	movieSvc := service.NewMovieService(movieRepo)
 
+	jwtSecret := os.Getenv("SECRET")
+	if jwtSecret == "" {
+		slog.Error("SECRET env var is required")
+		os.Exit(1)
+	}
+
 	userRepo := repository.NewPgUserRepository(db)
-	userSvc := service.NewUserService(userRepo)
+	userSvc := service.NewUserService(userRepo, []byte(jwtSecret))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", api.RootHandler)
@@ -75,6 +81,7 @@ func main() {
 	mux.HandleFunc("GET /movies", api.GetAllMoviesHandler(movieSvc))
 
 	mux.HandleFunc("POST /signup", api.SignUpHandler(userSvc))
+	mux.HandleFunc("POST /login", api.LogInHandler(userSvc))
 
 	handler := api.RequestLog(api.Recover(mux))
 

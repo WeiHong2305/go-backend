@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"go-backend/internal/model"
 	"go-backend/internal/repository"
-	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -19,11 +18,12 @@ type UserService interface {
 }
 
 type userService struct {
-	repo repository.UserRepository
+	repo      repository.UserRepository
+	jwtSecret []byte
 }
 
-func NewUserService(repo repository.UserRepository) *userService {
-	return &userService{repo: repo}
+func NewUserService(repo repository.UserRepository, jwtSecret []byte) *userService {
+	return &userService{repo: repo, jwtSecret: jwtSecret}
 }
 
 func (s *userService) SignUp(ctx context.Context, user model.User) (model.User, error) {
@@ -52,21 +52,21 @@ func (s *userService) LogIn(ctx context.Context, email, password string) (string
 	user, err := s.repo.Get(ctx, email)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return "", fmt.Errorf("invalid email or password: %w", ErrNotFound)
+			return "", fmt.Errorf("invalid email or password: %w", ErrUnauthorized)
 		}
 		return "", err
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		return "", fmt.Errorf("invalid email or password: %w", ErrNotFound)
+		return "", fmt.Errorf("invalid email or password: %w", ErrUnauthorized)
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": user.ID,
-		"exp": time.Now().Add(time.Hour * 24 * 30).Unix(),
+		"exp": time.Now().Add(time.Hour).Unix(),
 	})
 
-	tokenString, err := token.SignedString(os.Getenv("SECRET"))
+	tokenString, err := token.SignedString(s.jwtSecret)
 	if err != nil {
 		return "", err
 	}

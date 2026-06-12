@@ -46,7 +46,7 @@ func (r *PgUserRepository) Get(ctx context.Context, email string) (model.User, e
 	defer cancel()
 
 	var user model.User
-	query := `SELECT * FROM users WHERE email = $1`
+	query := `SELECT id, email, name, password, created_at, updated_at FROM users WHERE email = $1`
 	err := r.db.QueryRowContext(ctx, query, email).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

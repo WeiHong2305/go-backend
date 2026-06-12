@@ -52,6 +52,11 @@ func mapServiceError(w http.ResponseWriter, err error) bool {
 		respondError(w, http.StatusConflict, err.Error())
 		return true
 	}
+	if errors.Is(err, service.ErrUnauthorized) {
+		slog.Debug("unauthorized", "error", err)
+		respondError(w, http.StatusUnauthorized, "Invalid email or password")
+		return true
+	}
 	if errors.Is(err, context.Canceled) {
 		// Client disconnected; nothing useful to send.
 		return true
@@ -266,6 +271,6 @@ func LogInHandler(svc service.UserService) http.HandlerFunc {
 		if mapServiceError(w, err) {
 			return
 		}
-		respondJSON(w, http.StatusOK, {"token": tokenString})
+		respondJSON(w, http.StatusOK, map[string]string{"token": tokenString})
 	}
 }
