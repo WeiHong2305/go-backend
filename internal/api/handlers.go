@@ -13,7 +13,11 @@ import (
 
 	"go-backend/internal/model"
 	"go-backend/internal/service"
+
+	"github.com/go-playground/validator/v10"
 )
+
+var validate = validator.New()
 
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
 
@@ -203,9 +207,9 @@ func SignUpHandler(svc service.UserService) http.HandlerFunc {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
 		var req struct {
-			Email    string `json:"email"`
-			Name     string `json:"name"`
-			Password string `json:"password"`
+			Email    string `json:"email" validate:"required,email"`
+			Name     string `json:"name" validate:"required"`
+			Password string `json:"password" validate:"required,min=8,max=72"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -214,6 +218,11 @@ func SignUpHandler(svc service.UserService) http.HandlerFunc {
 				return
 			}
 			respondError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+
+		if err := validate.Struct(req); err != nil {
+			respondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
