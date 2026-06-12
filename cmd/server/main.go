@@ -61,14 +61,20 @@ func main() {
 	movieRepo := repository.NewPgMovieRepository(db)
 	movieSvc := service.NewMovieService(movieRepo)
 
+	userRepo := repository.NewPgUserRepository(db)
+	userSvc := service.NewUserService(userRepo)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", api.RootHandler)
 	mux.HandleFunc("/health", api.HealthHandler(db))
+
 	mux.HandleFunc("POST /movies", api.CreateMovieHandler(movieSvc))
 	mux.HandleFunc("GET /movies/{id}", api.GetMovieHandler(movieSvc))
 	mux.HandleFunc("PATCH /movies/{id}", api.UpdateMovieHandler(movieSvc))
 	mux.HandleFunc("DELETE /movies/{id}", api.DeleteMovieHandler(movieSvc))
 	mux.HandleFunc("GET /movies", api.GetAllMoviesHandler(movieSvc))
+
+	mux.HandleFunc("POST /signup", api.SignUpHandler(userSvc))
 
 	handler := api.RequestLog(api.Recover(mux))
 

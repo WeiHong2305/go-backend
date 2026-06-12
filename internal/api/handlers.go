@@ -192,3 +192,36 @@ func parseMovieID(id string) (int64, error) {
 	}
 	return n, nil
 }
+
+func SignUpHandler(svc service.UserService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
+		var req struct {
+			Email    string `json:"email"`
+			Name     string `json:"name"`
+			Password string `json:"password"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				respondError(w, http.StatusRequestEntityTooLarge, "request body too large")
+				return
+			}
+			respondError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+
+		user, err := svc.SignUp(r.Context(), model.User{
+			Email:    req.Email,
+			Name:     req.Name,
+			Password: req.Password,
+		})
+
+		if mapServiceError(w, err) {
+			return
+		}
+		respondJSON(w, http.StatusCreated, user)
+	}
+
+}
