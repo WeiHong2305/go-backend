@@ -271,6 +271,16 @@ func LogInHandler(svc service.UserService) http.HandlerFunc {
 		if mapServiceError(w, err) {
 			return
 		}
-		respondJSON(w, http.StatusOK, map[string]string{"token": tokenString})
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "token",
+			Value:    tokenString,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   3600,
+		})
+		respondJSON(w, http.StatusOK, map[string]string{"message": "logged in"})
 	}
 }
