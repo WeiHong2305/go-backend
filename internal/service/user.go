@@ -15,6 +15,7 @@ import (
 type UserService interface {
 	SignUp(ctx context.Context, user model.User) (model.User, error)
 	LogIn(ctx context.Context, email, password string) (string, error)
+	GetUser(ctx context.Context, id int64) (model.User, error)
 }
 
 type userService struct {
@@ -49,7 +50,7 @@ func (s *userService) SignUp(ctx context.Context, user model.User) (model.User, 
 }
 
 func (s *userService) LogIn(ctx context.Context, email, password string) (string, error) {
-	user, err := s.repo.Get(ctx, email)
+	user, err := s.repo.GetUsingEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", fmt.Errorf("invalid email or password: %w", ErrUnauthorized)
@@ -72,4 +73,15 @@ func (s *userService) LogIn(ctx context.Context, email, password string) (string
 	}
 
 	return tokenString, nil
+}
+
+func (s *userService) GetUser(ctx context.Context, id int64) (model.User, error) {
+	user, err := s.repo.GetUsingId(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.User{}, fmt.Errorf("user %w: %d", ErrNotFound, id)
+		}
+		return model.User{}, err
+	}
+	return user, nil
 }

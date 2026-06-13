@@ -128,7 +128,7 @@ func CreateMovieHandler(svc service.MovieService) http.HandlerFunc {
 
 func GetMovieHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := parseMovieID(r.PathValue("id"))
+		id, err := parseID(r.PathValue("id"))
 		if err != nil {
 			respondError(w, http.StatusBadRequest, "invalid movie ID")
 			return
@@ -155,7 +155,7 @@ func GetAllMoviesHandler(svc service.MovieService) http.HandlerFunc {
 
 func UpdateMovieHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := parseMovieID(r.PathValue("id"))
+		id, err := parseID(r.PathValue("id"))
 		if err != nil {
 			respondError(w, http.StatusBadRequest, "invalid movie ID")
 			return
@@ -182,7 +182,7 @@ func UpdateMovieHandler(svc service.MovieService) http.HandlerFunc {
 
 func DeleteMovieHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := parseMovieID(r.PathValue("id"))
+		id, err := parseID(r.PathValue("id"))
 		if err != nil {
 			respondError(w, http.StatusBadRequest, "invalid movie ID")
 			return
@@ -196,7 +196,7 @@ func DeleteMovieHandler(svc service.MovieService) http.HandlerFunc {
 	}
 }
 
-func parseMovieID(id string) (int64, error) {
+func parseID(id string) (int64, error) {
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("invalid id: %w", err)
@@ -282,5 +282,21 @@ func LogInHandler(svc service.UserService) http.HandlerFunc {
 			MaxAge:   3600,
 		})
 		respondJSON(w, http.StatusOK, map[string]string{"message": "logged in"})
+	}
+}
+
+func GetUserHandler(svc service.UserService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := parseID(r.PathValue("id"))
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid user ID")
+			return
+		}
+
+		user, err := svc.GetUser(r.Context(), id)
+		if mapServiceError(w, err) {
+			return
+		}
+		respondJSON(w, http.StatusOK, user)
 	}
 }
