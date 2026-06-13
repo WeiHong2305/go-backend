@@ -63,8 +63,8 @@ func (r *PgUserRepository) GetUsingId(ctx context.Context, id int64) (model.User
 	defer cancel()
 
 	var user model.User
-	query := `SELECT id, email, name, password, created_at, updated_at FROM users WHERE id = $1`
-	err := r.db.QueryRowContext(ctx, query, id).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &user.CreatedAt, &user.UpdatedAt)
+	query := `SELECT id, email, name, created_at, updated_at FROM users WHERE id = $1`
+	err := r.db.QueryRowContext(ctx, query, id).Scan(&user.ID, &user.Email, &user.Name, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.User{}, fmt.Errorf("%w: %s", ErrNotFound, id)
