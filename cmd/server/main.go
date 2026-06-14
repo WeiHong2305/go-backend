@@ -83,6 +83,7 @@ func main() {
 	mux.HandleFunc("POST /signup", api.SignUpHandler(userSvc))
 	mux.HandleFunc("POST /login", api.LogInHandler(userSvc))
 	mux.HandleFunc("GET /users/{id}", api.GetUserHandler(userSvc))
+	mux.HandleFunc("GET /users", api.GetAllUsersHandler(userSvc))
 
 	handler := api.RequestLog(api.Recover(mux))
 

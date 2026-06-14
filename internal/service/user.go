@@ -16,6 +16,7 @@ type UserService interface {
 	SignUp(ctx context.Context, user model.User) (model.User, error)
 	LogIn(ctx context.Context, email, password string) (string, error)
 	GetUser(ctx context.Context, id int64) (model.User, error)
+	GetAllUsers(ctx context.Context) ([]model.User, error)
 }
 
 type userService struct {
@@ -85,4 +86,8 @@ func (s *userService) GetUser(ctx context.Context, id int64) (model.User, error)
 		return model.User{}, err
 	}
 	return user, nil
+}
+
+func (s *userService) GetAllUsers(ctx context.Context) ([]model.User, error) {
+	return s.repo.GetAll(ctx)
 }

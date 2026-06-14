@@ -12,9 +12,10 @@ import (
 )
 
 type UserRepository interface {
-	Create(context.Context, model.User) (model.User, error)
-	GetByEmail(context.Context, string) (model.User, error)
-	GetById(context.Context, int64) (model.User, error)
+	Create(ctx context.Context, user model.User) (model.User, error)
+	GetByEmail(ctx context.Context, email string) (model.User, error)
+	GetById(ctx context.Context, id int64) (model.User, error)
+	GetAll(ctx context.Context) ([]model.User, error)
 }
 
 type PgUserRepository struct {
@@ -72,4 +73,26 @@ func (r *PgUserRepository) GetById(ctx context.Context, id int64) (model.User, e
 		return model.User{}, fmt.Errorf("failed to fetch user: %w", err)
 	}
 	return user, nil
+}
+
+func (r *PgUserRepository) GetAll(ctx context.Context) ([]model.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	query := `SELECT id, email, name, is_admin, created_at, updated_at FROM users`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []model.User
+	for rows.Next() {
+		var user model.User
+		if err := rows.Scan(&user.ID, &user.Email, &user.Name, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan users: %w", err)
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
 }

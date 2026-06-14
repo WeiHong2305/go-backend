@@ -300,3 +300,13 @@ func GetUserHandler(svc service.UserService) http.HandlerFunc {
 		respondJSON(w, http.StatusOK, user)
 	}
 }
+
+func GetAllUsersHandler(svc service.UserService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		users, err := svc.GetAllUsers(r.Context())
+		if mapServiceError(w, err) {
+			return
+		}
+		respondJSON(w, http.StatusOK, users)
+	}
+}
