@@ -50,7 +50,7 @@ func (s *userService) SignUp(ctx context.Context, user model.User) (model.User, 
 }
 
 func (s *userService) LogIn(ctx context.Context, email, password string) (string, error) {
-	user, err := s.repo.GetUsingEmail(ctx, email)
+	user, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", fmt.Errorf("invalid email or password: %w", ErrUnauthorized)
@@ -63,8 +63,9 @@ func (s *userService) LogIn(ctx context.Context, email, password string) (string
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": user.ID,
-		"exp": time.Now().Add(time.Hour).Unix(),
+		"sub":      user.ID,
+		"is_admin": user.IsAdmin,
+		"exp":      time.Now().Add(time.Hour).Unix(),
 	})
 
 	tokenString, err := token.SignedString(s.jwtSecret)
@@ -76,7 +77,7 @@ func (s *userService) LogIn(ctx context.Context, email, password string) (string
 }
 
 func (s *userService) GetUser(ctx context.Context, id int64) (model.User, error) {
-	user, err := s.repo.GetUsingId(ctx, id)
+	user, err := s.repo.GetById(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return model.User{}, fmt.Errorf("user %w: %d", ErrNotFound, id)

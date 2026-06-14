@@ -13,8 +13,8 @@ import (
 
 type UserRepository interface {
 	Create(context.Context, model.User) (model.User, error)
-	GetUsingEmail(context.Context, string) (model.User, error)
-	GetUsingId(context.Context, int64) (model.User, error)
+	GetByEmail(context.Context, string) (model.User, error)
+	GetById(context.Context, int64) (model.User, error)
 }
 
 type PgUserRepository struct {
@@ -29,9 +29,9 @@ func (r *PgUserRepository) Create(ctx context.Context, user model.User) (model.U
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	query := `INSERT INTO users (email, name, password) VALUES ($1, $2, $3) RETURNING id, created_at, updated_at`
+	query := `INSERT INTO users (email, name, password) VALUES ($1, $2, $3) RETURNING id, is_admin, created_at, updated_at`
 
-	err := r.db.QueryRowContext(ctx, query, user.Email, user.Name, user.Password).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+	err := r.db.QueryRowContext(ctx, query, user.Email, user.Name, user.Password).Scan(&user.ID, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
@@ -42,13 +42,13 @@ func (r *PgUserRepository) Create(ctx context.Context, user model.User) (model.U
 	return user, nil
 }
 
-func (r *PgUserRepository) GetUsingEmail(ctx context.Context, email string) (model.User, error) {
+func (r *PgUserRepository) GetByEmail(ctx context.Context, email string) (model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	var user model.User
-	query := `SELECT id, email, name, password, created_at, updated_at FROM users WHERE email = $1`
-	err := r.db.QueryRowContext(ctx, query, email).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &user.CreatedAt, &user.UpdatedAt)
+	query := `SELECT id, email, name, password, is_admin, created_at, updated_at FROM users WHERE email = $1`
+	err := r.db.QueryRowContext(ctx, query, email).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.User{}, fmt.Errorf("%w: %s", ErrNotFound, email)
@@ -58,13 +58,13 @@ func (r *PgUserRepository) GetUsingEmail(ctx context.Context, email string) (mod
 	return user, nil
 }
 
-func (r *PgUserRepository) GetUsingId(ctx context.Context, id int64) (model.User, error) {
+func (r *PgUserRepository) GetById(ctx context.Context, id int64) (model.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	var user model.User
-	query := `SELECT id, email, name, created_at, updated_at FROM users WHERE id = $1`
-	err := r.db.QueryRowContext(ctx, query, id).Scan(&user.ID, &user.Email, &user.Name, &user.CreatedAt, &user.UpdatedAt)
+	query := `SELECT id, email, name, is_admin, created_at, updated_at FROM users WHERE id = $1`
+	err := r.db.QueryRowContext(ctx, query, id).Scan(&user.ID, &user.Email, &user.Name, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.User{}, fmt.Errorf("%w: %s", ErrNotFound, id)
