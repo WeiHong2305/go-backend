@@ -293,6 +293,13 @@ func GetUserHandler(svc service.UserService) http.HandlerFunc {
 			return
 		}
 
+		currentUserID := r.Context().Value(UserIDKey).(int64)
+		isAdmin, _ := r.Context().Value(IsAdminKey).(bool)
+		if currentUserID != id && !isAdmin {
+			respondError(w, http.StatusForbidden, "access denied")
+			return
+		}
+
 		user, err := svc.GetUser(r.Context(), id)
 		if mapServiceError(w, err) {
 			return
