@@ -2,10 +2,16 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"go-backend/internal/model"
 	"go-backend/internal/repository"
+	"log/slog"
+	"strconv"
+	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type MovieService interface {
@@ -17,11 +23,13 @@ type MovieService interface {
 }
 
 type movieService struct {
-	repo repository.MovieRepository
+	repo        repository.MovieRepository
+	redisClient *redis.Client
+	cacheTTL    time.Duration
 }
 
-func NewMovieService(repo repository.MovieRepository) *movieService {
-	return &movieService{repo: repo}
+func NewMovieService(repo repository.MovieRepository, redisClient *redis.Client, cacheTTL time.Duration) *movieService {
+	return &movieService{repo: repo, redisClient: redisClient, cacheTTL: cacheTTL}
 }
 
 func (s *movieService) CreateMovie(ctx context.Context, movie model.Movie) (model.Movie, error) {
@@ -39,9 +47,35 @@ func (s *movieService) CreateMovie(ctx context.Context, movie model.Movie) (mode
 }
 
 func (s *movieService) GetMovie(ctx context.Context, id int64) (model.Movie, error) {
+	cacheKey := fmt.Sprintf("movies:%s", strconv.FormatInt(id, 10))
+
+	// 1. Attempt to fetch from Redis
+	cacheValue, err := s.redisClient.Get(ctx, cacheKey).Result()
+	if err == nil {
+		// Cache Hit
+		slog.Info("Cache Hit")
+		var movie model.Movie
+		if err := json.Unmarshal([]byte(cacheValue), &movie); err == nil {
+			return movie, nil
+		}
+	} else if !errors.Is(err, redis.Nil) {
+		slog.Warn("Failed to read from Redis", "error", err)
+	}
+
+	// 2. Cache Miss: Fetch from the primary database
+	slog.Info("Cache Miss")
 	movie, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return model.Movie{}, mapRepoError(err)
+	}
+
+	// 3. Serialize and save back to Redis
+	data, err := json.Marshal(movie)
+	if err != nil {
+		slog.Warn("Failed to GetMovie: Json marshal error", "error", err)
+	}
+	if err := s.redisClient.Set(ctx, cacheKey, data, s.cacheTTL).Err(); err != nil {
+		slog.Warn("Failed to write to Redis", "error", err)
 	}
 	return movie, nil
 }
