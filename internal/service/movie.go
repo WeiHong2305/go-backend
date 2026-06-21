@@ -11,7 +11,10 @@ import (
 	"log/slog"
 )
 
-const movieCacheKeyFmt = "movies:%d"
+const (
+	movieCacheKeyFmt  = "movies:%d"
+	movieListCacheKey = "movies:all"
+)
 
 type MovieService interface {
 	CreateMovie(ctx context.Context, movie model.Movie) (model.Movie, error)
@@ -41,6 +44,9 @@ func (s *movieService) CreateMovie(ctx context.Context, movie model.Movie) (mode
 	}
 
 	movie.ID = id
+
+	s.invalidateCache(ctx, movieListCacheKey)
+
 	return movie, nil
 }
 
@@ -75,12 +81,30 @@ func (s *movieService) GetMovie(ctx context.Context, id int64) (model.Movie, err
 }
 
 func (s *movieService) GetAllMovies(ctx context.Context) ([]model.Movie, error) {
+	cacheValue, err := s.cache.Get(ctx, movieListCacheKey)
+	if err == nil {
+		var movies []model.Movie
+		if err := json.Unmarshal([]byte(cacheValue), &movies); err == nil {
+			slog.Debug("cache hit", "key", movieListCacheKey)
+			return movies, nil
+		}
+	} else if !errors.Is(err, cache.ErrMiss) {
+		slog.Warn("failed to read from cache", "key", movieListCacheKey, "error", err)
+	}
+
 	movies, err := s.repo.GetAll(ctx)
 	if err != nil {
 		return nil, mapRepoError(err)
 	}
 	if movies == nil {
 		movies = []model.Movie{}
+	}
+
+	data, err := json.Marshal(movies)
+	if err == nil {
+		if err := s.cache.Set(ctx, movieListCacheKey, string(data)); err != nil {
+			slog.Warn("failed to write to cache", "key", movieListCacheKey, "error", err)
+		}
 	}
 	return movies, nil
 }
@@ -119,10 +143,7 @@ func (s *movieService) UpdateMovie(ctx context.Context, id int64, patch model.Mo
 		return model.Movie{}, mapRepoError(err)
 	}
 
-	cacheKey := fmt.Sprintf(movieCacheKeyFmt, id)
-	if err := s.cache.Delete(ctx, cacheKey); err != nil {
-		slog.Warn("failed to invalidate cache", "key", cacheKey, "error", err)
-	}
+	s.invalidateCache(ctx, fmt.Sprintf(movieCacheKeyFmt, id), movieListCacheKey)
 
 	return updated, nil
 }
@@ -132,12 +153,17 @@ func (s *movieService) DeleteMovie(ctx context.Context, id int64) error {
 		return mapRepoError(err)
 	}
 
-	cacheKey := fmt.Sprintf(movieCacheKeyFmt, id)
-	if err := s.cache.Delete(ctx, cacheKey); err != nil {
-		slog.Warn("failed to invalidate cache", "key", cacheKey, "error", err)
-	}
+	s.invalidateCache(ctx, fmt.Sprintf(movieCacheKeyFmt, id), movieListCacheKey)
 
 	return nil
+}
+
+func (s *movieService) invalidateCache(ctx context.Context, keys ...string) {
+	for _, key := range keys {
+		if err := s.cache.Delete(ctx, key); err != nil {
+			slog.Warn("failed to invalidate cache", "key", key, "error", err)
+		}
+	}
 }
 
 func mapRepoError(err error) error {
