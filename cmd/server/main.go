@@ -17,7 +17,6 @@ import (
 	"go-backend/internal/service"
 
 	_ "github.com/lib/pq"
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -60,42 +59,11 @@ func main() {
 	}
 	cancel()
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "host.docker.internal:6379"
-		slog.Warn("REDIS_ADDR not set, using default local redis address")
-	}
-	redisCacheTTLString := os.Getenv("REDIS_CACHE_TTL")
-	var redisCacheTTLDuration time.Duration
-	if redisCacheTTLString == "" {
-		redisCacheTTLDuration = 1 * time.Hour
-		slog.Warn("REDIS_CACHE_TTL not set, using default value of 1 hour")
-	} else {
-		redisCacheTTLDuration, err = time.ParseDuration(redisCacheTTLString)
-		if err != nil {
-			redisCacheTTLDuration = 1 * time.Hour
-			slog.Warn("Invalid REDIS_CACHE_TTL, using default value of 1 hour")
-		}
-	}
-
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: "",
-		DB:       0,
-	})
-	defer rdb.Close()
-
-	redisPingctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	_, err = rdb.Ping(redisPingctx).Result()
-	if err != nil {
-		cancel()
-		slog.Error("failed to ping redis", "error", err)
-		os.Exit(1)
-	}
-	cancel()
+	redisCfg := newRedisClient()
+	defer redisCfg.client.Close()
 
 	movieRepo := repository.NewPgMovieRepository(db)
-	movieCache := cache.NewRedisCache(rdb, redisCacheTTLDuration)
+	movieCache := cache.NewRedisCache(redisCfg.client, redisCfg.cacheTTL)
 	movieSvc := service.NewMovieService(movieRepo, movieCache)
 
 	jwtSecret := os.Getenv("SECRET")

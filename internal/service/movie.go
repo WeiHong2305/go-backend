@@ -11,6 +11,8 @@ import (
 	"log/slog"
 )
 
+const movieCacheKeyFmt = "movies:%d"
+
 type MovieService interface {
 	CreateMovie(ctx context.Context, movie model.Movie) (model.Movie, error)
 	GetMovie(ctx context.Context, id int64) (model.Movie, error)
@@ -43,7 +45,7 @@ func (s *movieService) CreateMovie(ctx context.Context, movie model.Movie) (mode
 }
 
 func (s *movieService) GetMovie(ctx context.Context, id int64) (model.Movie, error) {
-	cacheKey := fmt.Sprintf("movies:%d", id)
+	cacheKey := fmt.Sprintf(movieCacheKeyFmt, id)
 
 	cacheValue, err := s.cache.Get(ctx, cacheKey)
 	if err == nil {
@@ -116,6 +118,12 @@ func (s *movieService) UpdateMovie(ctx context.Context, id int64, patch model.Mo
 	if err != nil {
 		return model.Movie{}, mapRepoError(err)
 	}
+
+	cacheKey := fmt.Sprintf(movieCacheKeyFmt, id)
+	if err := s.cache.Delete(ctx, cacheKey); err != nil {
+		slog.Warn("failed to invalidate cache", "key", cacheKey, "error", err)
+	}
+
 	return updated, nil
 }
 
@@ -123,6 +131,12 @@ func (s *movieService) DeleteMovie(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return mapRepoError(err)
 	}
+
+	cacheKey := fmt.Sprintf(movieCacheKeyFmt, id)
+	if err := s.cache.Delete(ctx, cacheKey); err != nil {
+		slog.Warn("failed to invalidate cache", "key", cacheKey, "error", err)
+	}
+
 	return nil
 }
 
