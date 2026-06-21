@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
@@ -33,31 +32,8 @@ func main() {
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: loglevel})))
 
-	connStr := os.Getenv("DATABASE_URL")
-	if connStr == "" {
-		connStr = "postgres://postgres:secret@localhost:5433/gopgtest?sslmode=disable"
-		slog.Warn("DATABASE_URL not set, using default local connection string")
-	}
-
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		slog.Error("failed to open database", "error", err)
-		os.Exit(1)
-	}
+	db := newDatabase()
 	defer db.Close()
-
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxIdleTime(5 * time.Minute)
-	db.SetConnMaxLifetime(time.Hour)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	if err = db.PingContext(ctx); err != nil {
-		cancel()
-		slog.Error("failed to ping database", "error", err)
-		os.Exit(1)
-	}
-	cancel()
 
 	redisCfg := newRedisClient()
 	defer redisCfg.client.Close()
