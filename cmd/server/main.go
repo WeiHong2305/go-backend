@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go-backend/internal/api"
+	"go-backend/internal/cache"
 	"go-backend/internal/repository"
 	"go-backend/internal/service"
 
@@ -62,7 +63,7 @@ func main() {
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "host.docker.internal:6379"
-		slog.Warn("REDIS_URL not set, using default local redis address")
+		slog.Warn("REDIS_ADDR not set, using default local redis address")
 	}
 	redisCacheTTLString := os.Getenv("REDIS_CACHE_TTL")
 	var redisCacheTTLDuration time.Duration
@@ -94,7 +95,8 @@ func main() {
 	cancel()
 
 	movieRepo := repository.NewPgMovieRepository(db)
-	movieSvc := service.NewMovieService(movieRepo, rdb, redisCacheTTLDuration)
+	movieCache := cache.NewRedisCache(rdb, redisCacheTTLDuration)
+	movieSvc := service.NewMovieService(movieRepo, movieCache)
 
 	jwtSecret := os.Getenv("SECRET")
 	if jwtSecret == "" {

@@ -5,13 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go-backend/internal/cache"
 	"go-backend/internal/model"
 	"go-backend/internal/repository"
 	"log/slog"
-	"strconv"
-	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 type MovieService interface {
@@ -23,13 +20,12 @@ type MovieService interface {
 }
 
 type movieService struct {
-	repo        repository.MovieRepository
-	redisClient *redis.Client
-	cacheTTL    time.Duration
+	repo  repository.MovieRepository
+	cache cache.Cache
 }
 
-func NewMovieService(repo repository.MovieRepository, redisClient *redis.Client, cacheTTL time.Duration) *movieService {
-	return &movieService{repo: repo, redisClient: redisClient, cacheTTL: cacheTTL}
+func NewMovieService(repo repository.MovieRepository, cache cache.Cache) *movieService {
+	return &movieService{repo: repo, cache: cache}
 }
 
 func (s *movieService) CreateMovie(ctx context.Context, movie model.Movie) (model.Movie, error) {
@@ -47,36 +43,32 @@ func (s *movieService) CreateMovie(ctx context.Context, movie model.Movie) (mode
 }
 
 func (s *movieService) GetMovie(ctx context.Context, id int64) (model.Movie, error) {
-	cacheKey := fmt.Sprintf("movies:%s", strconv.FormatInt(id, 10))
+	cacheKey := fmt.Sprintf("movies:%d", id)
 
-	// 1. Attempt to fetch from Redis
-	cacheValue, err := s.redisClient.Get(ctx, cacheKey).Result()
+	cacheValue, err := s.cache.Get(ctx, cacheKey)
 	if err == nil {
-		// Cache Hit
-		slog.Info("Cache Hit")
 		var movie model.Movie
 		if err := json.Unmarshal([]byte(cacheValue), &movie); err == nil {
+			slog.Debug("cache hit", "key", cacheKey)
 			return movie, nil
 		}
-	} else if !errors.Is(err, redis.Nil) {
-		slog.Warn("Failed to read from Redis", "error", err)
+	} else if !errors.Is(err, cache.ErrMiss) {
+		slog.Warn("failed to read from cache", "key", cacheKey, "error", err)
 	}
 
-	// 2. Cache Miss: Fetch from the primary database
 	slog.Info("Cache Miss")
 	movie, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return model.Movie{}, mapRepoError(err)
 	}
 
-	// 3. Serialize and save back to Redis
 	data, err := json.Marshal(movie)
-	if err != nil {
-		slog.Warn("Failed to GetMovie: Json marshal error", "error", err)
+	if err == nil {
+		if err := s.cache.Set(ctx, cacheKey, string(data)); err != nil {
+			slog.Warn("failed to write to cache", "key", cacheKey, "error", err)
+		}
 	}
-	if err := s.redisClient.Set(ctx, cacheKey, data, s.cacheTTL).Err(); err != nil {
-		slog.Warn("Failed to write to Redis", "error", err)
-	}
+
 	return movie, nil
 }
 
