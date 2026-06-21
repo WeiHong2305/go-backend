@@ -17,7 +17,7 @@ type redisConfig struct {
 func newRedisClient() redisConfig {
 	addr := os.Getenv("REDIS_ADDR")
 	if addr == "" {
-		addr = "host.docker.internal.6379"
+		addr = "host.docker.internal:6379"
 		slog.Warn("REDIS_ADDR not set, using default local redis address")
 	}
 
