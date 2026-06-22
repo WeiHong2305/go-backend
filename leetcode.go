@@ -1,19 +1,13 @@
 package main
 
 func moveZeroes(nums []int) {
-	reader, writer := 0, 0
+	writer := 0
 
-	for reader < len(nums) {
+	for reader := range nums {
 		if nums[reader] != 0 {
-			found := false
-			for writer < reader && !found {
-				if nums[writer] == 0 {
-					nums[writer], nums[reader] = nums[reader], nums[writer]
-					found = true
-				}
-				writer++
-			}
+			nums[writer], nums[reader] = nums[reader], nums[writer]
+			nums[writer] = nums[reader]
+			writer++
 		}
-		reader++
 	}
 }
