@@ -1,17 +1,18 @@
+package leetcode
+
 func isSubsequence(s string, t string) bool {
 	sIndex, tIndex := 0, 0
 	for sIndex < len(s) && tIndex < len(t) {
 		if t[tIndex] == s[sIndex] {
-			tIndex++
 			sIndex++
-		} else {
-			tIndex++
 		}
+		tIndex++
 	}
 
-	if sIndex >= len(s) {
-		return true
-	} else {
-		return false
-	}
+	return sIndex >= len(s)
 }
+
+// Time complexity: O(n), n = len(t)
+// Space complexity: O(1)
+
+// Follow-up question: haven't solved yet
