@@ -1,4 +1,4 @@
-package main
+package leetcode
 
 func moveZeroes(nums []int) {
 	writer := 0
