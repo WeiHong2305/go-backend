@@ -126,6 +126,13 @@ func CreateMovieHandler(svc service.MovieService) http.HandlerFunc {
 	}
 }
 
+func ImportMovieHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		job, err :=  
+		respondJSON(w, http.StatusAccepted, )
+	}
+}
+
 func GetMovieHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := parseID(r.PathValue("id"))
