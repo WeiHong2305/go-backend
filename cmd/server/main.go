@@ -12,8 +12,11 @@ import (
 
 	"go-backend/internal/api"
 	"go-backend/internal/cache"
+	"go-backend/internal/model"
 	"go-backend/internal/repository"
 	"go-backend/internal/service"
+	"go-backend/internal/worker"
+	"go-backend/internal/worker/handlers"
 
 	_ "github.com/lib/pq"
 )
@@ -48,6 +51,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	jobQueue := make(chan model.Job, 100)
+	jobSvc := service.NewJobService(jobQueue)
+	pool := worker.NewPool(jobQueue, 4)
+	pool.Register(model.JobTypeMovieImport, handlers.ImporMovies(movieSvc))
+	pool.Start()
+
 	userRepo := repository.NewPgUserRepository(db)
 	userSvc := service.NewUserService(userRepo, []byte(jwtSecret))
 
@@ -60,6 +69,7 @@ func main() {
 	mux.HandleFunc("PATCH /movies/{id}", api.UpdateMovieHandler(movieSvc))
 	mux.HandleFunc("DELETE /movies/{id}", api.DeleteMovieHandler(movieSvc))
 	mux.HandleFunc("GET /movies", api.GetAllMoviesHandler(movieSvc))
+	mux.HandleFunc("POST /movies/import", api.ImportMovieHandler(jobSvc))
 
 	mux.HandleFunc("POST /signup", api.SignUpHandler(userSvc))
 	mux.HandleFunc("POST /login", api.LogInHandler(userSvc))
@@ -103,5 +113,7 @@ func main() {
 		slog.Error("server forced shutdown", "error", err)
 		os.Exit(1)
 	}
+	close(jobQueue)
+	pool.Stop()
 	slog.Info("server exited")
 }

@@ -14,10 +14,17 @@ const (
 type Job struct {
 	ID         string
 	Type       string
+	Payload    any
 	Status     JobStatus
 	RetryCount int
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+const JobTypeMovieImport = "movie_import"
+
+type MovieImportPayload struct {
+	Movies []Movie
 }
 
 type JobRespond struct {
