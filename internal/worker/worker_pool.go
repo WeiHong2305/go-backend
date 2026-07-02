@@ -60,6 +60,7 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 		return
 	}
 
+	job.Status = model.Running
 	slog.Info("processing job",
 		"worker_id", workerID,
 		"job_id", job.ID,
@@ -73,6 +74,7 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 	if err := h(ctx, job); err != nil {
 		if job.RetryCount < model.MaxRetries {
 			job.RetryCount++
+			job.Status = model.Pending
 			delay := time.Duration(1<<job.RetryCount) * time.Second
 			slog.Warn("job failed, scheduling retry",
 				"worker_id", workerID,
@@ -87,6 +89,7 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 			}()
 			return
 		}
+		job.Status = model.Failed
 		slog.Error("job failed, retries exhausted",
 			"worker_id", workerID,
 			"job_id", job.ID,
@@ -96,6 +99,7 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 		return
 	}
 
+	job.Status = model.Completed
 	slog.Info("job completed",
 		"worker_id", workerID,
 		"job_id", job.ID,
