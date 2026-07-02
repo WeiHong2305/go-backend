@@ -45,7 +45,7 @@ func ImportMovieHandler(svc service.JobService) http.HandlerFunc {
 			return
 		}
 
-		resp, err := svc.AddJob(model.JobTypeMovieImport, model.MovieImportPayload{Movies: movies})
+		resp, err := svc.AddJob(model.JobTypeMovieImport, &model.MovieImportPayload{Movies: movies})
 		if mapServiceError(w, err) {
 			return
 		}

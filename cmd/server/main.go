@@ -54,7 +54,7 @@ func main() {
 	jobQueue := make(chan model.Job, 100)
 	jobSvc := service.NewJobService(jobQueue)
 	pool := worker.NewPool(jobQueue, 4)
-	pool.Register(model.JobTypeMovieImport, handlers.ImporMovies(movieSvc))
+	pool.Register(model.JobTypeMovieImport, handlers.ImportMovies(movieSvc))
 	pool.Start()
 
 	userRepo := repository.NewPgUserRepository(db)

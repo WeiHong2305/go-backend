@@ -9,7 +9,7 @@ import (
 )
 
 type JobService interface {
-	AddJob(jobType string, payload any) (model.JobRespond, error)
+	AddJob(jobType string, payload model.JobPayload) (model.JobRespond, error)
 }
 
 type jobService struct {
@@ -20,7 +20,7 @@ func NewJobService(queue chan model.Job) *jobService {
 	return &jobService{queue: queue}
 }
 
-func (j *jobService) AddJob(jobType string, payload any) (model.JobRespond, error) {
+func (j *jobService) AddJob(jobType string, payload model.JobPayload) (model.JobRespond, error) {
 	now := time.Now()
 	job := model.Job{
 		ID:        uuid.New().String(),

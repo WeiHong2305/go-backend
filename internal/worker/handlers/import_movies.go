@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go-backend/internal/model"
 	"go-backend/internal/service"
@@ -9,31 +10,57 @@ import (
 	"log/slog"
 )
 
-func ImporMovies(movieSvc service.MovieService) worker.HandlerFunc {
-	return func(ctx context.Context, job model.Job) error {
-		payload, ok := job.Payload.(model.MovieImportPayload)
+func ImportMovies(movieSvc service.MovieService) worker.HandlerFunc {
+	return func(ctx context.Context, job *model.Job) error {
+		payload, ok := job.Payload.(*model.MovieImportPayload)
 		if !ok {
 			return fmt.Errorf("unexpected payload type %T", job.Payload)
 		}
-		movies := payload.Movies
-		failed := 0
 
-		for i, m := range movies {
-			if _, err := movieSvc.CreateMovie(ctx, m); err != nil {
-				slog.Warn("failed to import movie",
-					"job_id", job.ID,
-					"row", i+1,
-					"title", m.Title,
-					"error", err,
-				)
-				failed++
-				continue
-			}
+		if payload.Done == nil {
+			payload.Done = make(map[int]bool)
 		}
 
-		if failed > 0 {
-			return fmt.Errorf("%d of %d movies failed to import", failed, len(movies))
+		hasTransient := false
+		for i, m := range payload.Movies {
+			if payload.Done[i] {
+				continue
+			}
+			if err := processRow(ctx, movieSvc, job.ID, i, m); err != nil {
+				hasTransient = true
+				continue
+			}
+			payload.Done[i] = true
+		}
+
+		if hasTransient {
+			return fmt.Errorf("some rows failed with transient errors")
 		}
 		return nil
 	}
+}
+
+func processRow(ctx context.Context, svc service.MovieService, jobID string, i int, m model.Movie) error {
+	_, err := svc.CreateMovie(ctx, m)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, service.ErrValidation) || errors.Is(err, service.ErrConflict) {
+		slog.Warn("skipping row (permanent failure)",
+			"job_id", jobID,
+			"row", i+1,
+			"title", m.Title,
+			"error", err,
+		)
+		return nil
+	}
+
+	slog.Warn("transient failure, will retry",
+		"job_id", jobID,
+		"row", i+1,
+		"title", m.Title,
+		"error", err,
+	)
+	return err
 }

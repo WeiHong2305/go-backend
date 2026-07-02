@@ -5,18 +5,21 @@ import (
 	"go-backend/internal/model"
 	"log/slog"
 	"sync"
+	"time"
 )
 
-type HandlerFunc func(ctx context.Context, job model.Job) error
+const jobTimeout = 5 * time.Minute
+
+type HandlerFunc func(ctx context.Context, job *model.Job) error
 
 type Pool struct {
-	queue    <-chan model.Job
+	queue    chan model.Job
 	workers  int
 	wg       sync.WaitGroup
 	handlers map[string]HandlerFunc
 }
 
-func NewPool(queue <-chan model.Job, workers int) *Pool {
+func NewPool(queue chan model.Job, workers int) *Pool {
 	return &Pool{
 		queue:    queue,
 		workers:  workers,
@@ -35,7 +38,7 @@ func (p *Pool) Start() {
 			defer p.wg.Done()
 			slog.Info("worker started", "worker_id", id)
 			for job := range p.queue {
-				p.dispatch(id, job)
+				p.dispatch(id, &job)
 			}
 			slog.Info("worker stopped", "worker_id", id)
 		}(i)
@@ -46,7 +49,7 @@ func (p *Pool) Stop() {
 	p.wg.Wait()
 }
 
-func (p *Pool) dispatch(workerID int, job model.Job) {
+func (p *Pool) dispatch(workerID int, job *model.Job) {
 	h, ok := p.handlers[job.Type]
 	if !ok {
 		slog.Warn("no handler registered for job type",
@@ -61,12 +64,33 @@ func (p *Pool) dispatch(workerID int, job model.Job) {
 		"worker_id", workerID,
 		"job_id", job.ID,
 		"type", job.Type,
+		"attempt", job.RetryCount+1,
 	)
 
-	if err := h(context.Background(), job); err != nil {
-		slog.Error("job failed",
+	ctx, cancel := context.WithTimeout(context.Background(), jobTimeout)
+	defer cancel()
+
+	if err := h(ctx, job); err != nil {
+		if job.RetryCount < model.MaxRetries {
+			job.RetryCount++
+			delay := time.Duration(1<<job.RetryCount) * time.Second
+			slog.Warn("job failed, scheduling retry",
+				"worker_id", workerID,
+				"job_id", job.ID,
+				"retry", job.RetryCount,
+				"delay", delay,
+				"error", err,
+			)
+			go func() {
+				time.Sleep(delay)
+				p.queue <- *job
+			}()
+			return
+		}
+		slog.Error("job failed, retries exhausted",
 			"worker_id", workerID,
 			"job_id", job.ID,
+			"retries", job.RetryCount,
 			"error", err,
 		)
 		return
