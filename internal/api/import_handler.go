@@ -94,6 +94,8 @@ func parseMovieRecord(rec []string) (model.Movie, error) {
 
 const maxCSVBytes = 5 << 20 // 5 MiB
 
+const idempotencyProcessing = "processing"
+
 func ImportMovieHandler(svc service.JobService, idemCache cache.Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idempotencyKey := r.Header.Get("Idempotency-Key")
@@ -106,47 +108,66 @@ func ImportMovieHandler(svc service.JobService, idemCache cache.Cache) http.Hand
 			return
 		}
 
-		r.Body = http.MaxBytesReader(w, r.Body, maxCSVBytes)
-
-		if err := r.ParseMultipartForm(maxCSVBytes); err != nil {
-			respondError(w, http.StatusBadRequest, "invalid multipart form")
+		movies, ok := parseImportForm(w, r)
+		if !ok {
 			return
 		}
 
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			respondError(w, http.StatusBadRequest, "missing file field")
-			return
-		}
-		defer file.Close()
-
-		movies, rowErrors, err := parseMoviesCSV(file)
-		if err != nil {
-			respondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		if len(rowErrors) > 0 {
-			respondJSON(w, http.StatusBadRequest, map[string]any{
-				"error":   "CSV validation failed",
-				"details": rowErrors,
-			})
-			return
+		if err := idemCache.Set(r.Context(), idempotencyKey, idempotencyProcessing); err != nil {
+			slog.Error("failed to set idempotency placeholder", "key", idempotencyKey, "error", err)
 		}
 
 		resp, err := svc.AddJob(model.JobTypeMovieImport, &model.MovieImportPayload{Movies: movies})
 		if mapServiceError(w, err) {
+			idemCache.Delete(r.Context(), idempotencyKey)
 			return
 		}
 
 		storeInCache(r, idemCache, idempotencyKey, resp)
 		respondJSON(w, http.StatusAccepted, resp)
 	}
+
+}
+
+func parseImportForm(w http.ResponseWriter, r *http.Request) ([]model.Movie, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxCSVBytes)
+
+	if err := r.ParseMultipartForm(maxCSVBytes); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid multipart form")
+		return nil, false
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "missing file field")
+		return nil, false
+	}
+	defer file.Close()
+
+	movies, rowErrors, err := parseMoviesCSV(file)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return nil, false
+	}
+
+	if len(rowErrors) > 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]any{
+			"error":   "CSV validation failed",
+			"details": rowErrors,
+		})
+		return nil, false
+	}
+
+	return movies, true
 }
 
 func serveFromCache(w http.ResponseWriter, r *http.Request, c cache.Cache, key string) bool {
 	cached, err := c.Get(r.Context(), key)
 	if err == nil {
+		if cached == idempotencyProcessing {
+			respondError(w, http.StatusConflict, "request is already being processed")
+			return true
+		}
 		respondRawJSON(w, http.StatusAccepted, cached)
 		return true
 	}
