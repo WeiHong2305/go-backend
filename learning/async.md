@@ -75,3 +75,29 @@ _Concurrency design patterns are not conflicting, but rather meant to be combine
 6. Observability - structured logs, metrics (queue depth, processing time, failure rate)
 7. Graceful shutdown - finish in-flight jobs before exiting
 8. Concurrency control - limit parallel workers to avoid overwhelming downstream services
+
+
+## Engineering Thinking
+1. Why not make every endpoint asynchronous?
+- Adds complexity - client now needs to poll or receive callbacks to know the result
+- Many operations are fast enough that async overhead (queue, worker, status tracking) isn't justified
+- Breaks simple request/response contract - harder to debug, harder for API consumers
+
+2. When should users await synchronously?
+- Any operation where the response determines the next user action - login, form submission with validation, reads/queries, anything interactive
+- Async is for "fire and forget" or "come back later" - bulk imports, report generation, email sending, image processing 
+
+3. What happens if server crashes while processing jobs?
+- Crash == no graceful shutdown, queue not closes, pool not stops
+- Jobs currently being processed by workers are lost mid-execution (partial state)
+- Jobs sitting in the channel buffer are lost entirely
+- This is weakness of in-memory queues - no durability guarantee
+- Fix: Persistent queue (Redis lists, RabbitMQ, Kafka) + acknowledgment after completion
+
+4. What happens to queued jobs during restart?
+- Both unprocessed and in-flight jobs are lost
+- With a persistent queue, unacknowledged jobs reappear after a visibility timeout
+
+5. Why is idempotency important in payment systems?
+- Network is unreliable - client times out, retries, but the first request actually succeeded
+- Safe retries in an unreliable network
