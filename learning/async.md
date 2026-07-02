@@ -64,3 +64,14 @@ _Concurrency design patterns are not conflicting, but rather meant to be combine
         - Resource control: Protects memory and CPU
         - Cost Efficiency: Eliminates the performance overhead of constantly creating and destroying threads for short-lived tasks.
         - Backpressure Handling: When tasks arrive faster than they can be processed, they sit safely in the queue without crashing the application.
+
+
+## Best Practice
+1. Persistence - jobs service process restarts (Redis/Postgres/Kafka, not just memory)
+2. Retry with backoff - exponential, with jitter to avoid thundering herd
+3. Idempotency - safe to re-run (DB constraints, idempotency keys, or checkpointing)
+4. Dead-letter queue - after max retries, move to a DLQ for human inspection instead of silently dropping
+5. Timeout - jobs don't run forever; kill after a deadline
+6. Observability - structured logs, metrics (queue depth, processing time, failure rate)
+7. Graceful shutdown - finish in-flight jobs before exiting
+8. Concurrency control - limit parallel workers to avoid overwhelming downstream services
