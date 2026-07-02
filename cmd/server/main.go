@@ -43,6 +43,7 @@ func main() {
 
 	movieRepo := repository.NewPgMovieRepository(db)
 	movieCache := cache.NewRedisCache(redisCfg.client, redisCfg.cacheTTL)
+	idempotencyCache := cache.NewRedisCache(redisCfg.client, 24*time.Hour)
 	movieSvc := service.NewMovieService(movieRepo, movieCache)
 
 	jwtSecret := os.Getenv("SECRET")
@@ -69,7 +70,7 @@ func main() {
 	mux.HandleFunc("PATCH /movies/{id}", api.UpdateMovieHandler(movieSvc))
 	mux.HandleFunc("DELETE /movies/{id}", api.DeleteMovieHandler(movieSvc))
 	mux.HandleFunc("GET /movies", api.GetAllMoviesHandler(movieSvc))
-	mux.HandleFunc("POST /movies/import", api.ImportMovieHandler(jobSvc))
+	mux.HandleFunc("POST /movies/import", api.ImportMovieHandler(jobSvc, idempotencyCache))
 
 	mux.HandleFunc("POST /signup", api.SignUpHandler(userSvc))
 	mux.HandleFunc("POST /login", api.LogInHandler(userSvc))

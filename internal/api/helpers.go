@@ -25,6 +25,12 @@ func respondJSON(w http.ResponseWriter, status int, data any) {
 	}
 }
 
+func respondRawJSON(w http.ResponseWriter, status int, raw string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	fmt.Fprint(w, raw)
+}
+
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
