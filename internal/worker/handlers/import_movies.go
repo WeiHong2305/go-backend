@@ -23,6 +23,9 @@ func ImportMovies(movieSvc service.MovieService) worker.HandlerFunc {
 
 		hasTransient := false
 		for i, m := range payload.Movies {
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("job context cancelled before row %d: %w", i, err)
+			}
 			if payload.Done[i] {
 				continue
 			}

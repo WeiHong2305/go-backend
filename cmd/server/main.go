@@ -52,9 +52,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	stopCh := make(chan struct{})
 	jobQueue := make(chan model.Job, 100)
 	jobSvc := service.NewJobService(jobQueue)
-	pool := worker.NewPool(jobQueue, 4)
+	pool := worker.NewPool(jobQueue, 4, stopCh)
 	pool.Register(model.JobTypeMovieImport, handlers.ImportMovies(movieSvc))
 	pool.Start()
 
@@ -105,16 +106,33 @@ func main() {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	slog.Info("shutting down server")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer shutdownCancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		slog.Error("server forced shutdown", "error", err)
+	<-quit
+	slog.Info("shutting down - send signal again to force exit")
+	close(stopCh)
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		defer close(shutdownDone)
+
+		httpCtx, httpCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer httpCancel()
+		if err := server.Shutdown(httpCtx); err != nil {
+			slog.Error("HTTP server forced shutdown", "error", err)
+		}
+
+		close(jobQueue)
+
+		if err := pool.Stop(35 * time.Second); err != nil {
+			slog.Error("worker pool forced shutdown", "error", err)
+		}
+	}()
+
+	select {
+	case <-shutdownDone:
+		slog.Info("server exited cleanly")
+	case <-quit:
+		slog.Warn("second signal received, forcing exit")
 		os.Exit(1)
 	}
-	close(jobQueue)
-	pool.Stop()
-	slog.Info("server exited")
 }

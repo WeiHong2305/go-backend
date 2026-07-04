@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"go-backend/internal/model"
 	"log/slog"
 	"sync"
@@ -17,13 +18,20 @@ type Pool struct {
 	workers  int
 	wg       sync.WaitGroup
 	handlers map[string]HandlerFunc
+	stopCh   <-chan struct{}
+	baseCtx  context.Context
+	cancel   context.CancelFunc
 }
 
-func NewPool(queue chan model.Job, workers int) *Pool {
+func NewPool(queue chan model.Job, workers int, stopCh <-chan struct{}) *Pool {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Pool{
 		queue:    queue,
 		workers:  workers,
 		handlers: make(map[string]HandlerFunc),
+		stopCh:   stopCh,
+		baseCtx:  ctx,
+		cancel:   cancel,
 	}
 }
 
@@ -45,8 +53,19 @@ func (p *Pool) Start() {
 	}
 }
 
-func (p *Pool) Stop() {
-	p.wg.Wait()
+func (p *Pool) Stop(timeout time.Duration) error {
+	done := make(chan struct{})
+	go func() {
+		p.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		p.cancel()
+		return fmt.Errorf("worker pool did not stop within %s", timeout)
+	}
 }
 
 func (p *Pool) dispatch(workerID int, job *model.Job) {
@@ -68,7 +87,7 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 		"attempt", job.RetryCount+1,
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), jobTimeout)
+	ctx, cancel := context.WithTimeout(p.baseCtx, jobTimeout)
 	defer cancel()
 
 	if err := h(ctx, job); err != nil {
@@ -84,8 +103,22 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 				"error", err,
 			)
 			go func() {
-				time.Sleep(delay)
-				p.queue <- *job
+				select {
+				case <-p.stopCh:
+					slog.Warn("shutdown: dropping retry",
+						"job_id", job.ID,
+						"retry", job.RetryCount,
+					)
+					return
+				case <-time.After(delay):
+				}
+				select {
+				case p.queue <- *job:
+				case <-p.stopCh:
+					slog.Warn("shutdown: could not requeue job",
+						"job_id", job.ID,
+					)
+				}
 			}()
 			return
 		}
