@@ -16,3 +16,16 @@
 ## How they work together?
 Metrics are used to alert teams to problems, traces show their path of execution and logs provide the context needed to resolve them.
 
+# Beyond the three pillars
+
+## Fourth pillar: Profiling
+Continuous capture of resource usage at the code level (CPU flame graphs, memory allocations, lock contention). Answers "which function/line is causing the bottleneck?" - deeper than traces, which show timing but not internal code hotsports. OpenTelemetry officially added profiling as a signal type alongside traces/metrics/logs.
+
+## Enabling practices (make the pillars useful)
+- Context - Metadata that enriches telemetry (e.g., environment, version, tenant, user ID). Without context, raw data is hard to interpret.
+- Correlation - The ability to link signals together (e.g., connecting a trace to its logs and metrics using a shared request/correlation ID). Makes it possible to jump between pillars during investigation.
+
+## Operational capabilities (built on top of the pillars)
+- Alerting - Rules that proactively notify teams when metrics cross thresholds or anomalies are detected. Turns passive data into actionable signals before users report issues.
+- Dashboarding - Visual representation of metrics and traces for at-a-glance system health.
+- Anomaly detection - Automatic identification of unusual patterns without manually defined thresholds.
