@@ -94,6 +94,7 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 	ctx, cancel := context.WithTimeout(p.baseCtx, jobTimeout)
 	defer cancel()
 
+	start := time.Now()
 	if err := h(ctx, job); err != nil {
 		if job.RetryCount < model.MaxRetries {
 			job.RetryCount++
@@ -144,7 +145,7 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 
 	job.Status = model.Completed
 	if p.metrics != nil {
-		p.metrics.RecordJobCompleted(ctx, job.Type)
+		p.metrics.RecordJobCompleted(ctx, job.Type, time.Since(start))
 	}
 	slog.Info("job completed",
 		"worker_id", workerID,

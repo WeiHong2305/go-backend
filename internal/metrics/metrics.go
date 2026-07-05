@@ -25,6 +25,7 @@ type Metrics struct {
 	jobsCompleted       otelmetric.Int64Counter
 	jobsFailed          otelmetric.Int64Counter
 	jobRetries          otelmetric.Int64Counter
+	jobDuration         otelmetric.Float64Histogram
 }
 
 func New() (*Metrics, error) {
@@ -96,6 +97,15 @@ func New() (*Metrics, error) {
 		return nil, err
 	}
 
+	jobDuration, err := meter.Float64Histogram("jobs.duration",
+		otelmetric.WithDescription("Job processing duration in seconds"),
+		otelmetric.WithUnit("s"),
+		otelmetric.WithExplicitBucketBoundaries(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Metrics{
 		provider:            provider,
 		httpRequestsTotal:   httpRequestsTotal,
@@ -107,6 +117,7 @@ func New() (*Metrics, error) {
 		jobsCompleted:       jobsCompleted,
 		jobsFailed:          jobsFailed,
 		jobRetries:          jobRetries,
+		jobDuration:         jobDuration,
 	}, nil
 }
 
@@ -149,10 +160,10 @@ func (m *Metrics) RecordCacheMiss(ctx context.Context, cacheName string) {
 	))
 }
 
-func (m *Metrics) RecordJobCompleted(ctx context.Context, jobType string) {
-	m.jobsCompleted.Add(ctx, 1, otelmetric.WithAttributes(
-		attribute.String("job.type", jobType),
-	))
+func (m *Metrics) RecordJobCompleted(ctx context.Context, jobType string, duration time.Duration) {
+	attrs := otelmetric.WithAttributes(attribute.String("job.type", jobType))
+	m.jobsCompleted.Add(ctx, 1, attrs)
+	m.jobDuration.Record(ctx, duration.Seconds(), attrs)
 }
 
 func (m *Metrics) RecordJobFailed(ctx context.Context, jobType string) {
