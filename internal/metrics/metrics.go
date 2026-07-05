@@ -19,6 +19,7 @@ type Metrics struct {
 	httpRequestsTotal   otelmetric.Int64Counter
 	httpRequestDuration otelmetric.Float64Histogram
 	httpActiveRequests  otelmetric.Int64UpDownCounter
+	httpResponseSize    otelmetric.Int64Histogram
 	cacheHits           otelmetric.Int64Counter
 	cacheMisses         otelmetric.Int64Counter
 	jobsCompleted       otelmetric.Int64Counter
@@ -51,6 +52,15 @@ func New() (*Metrics, error) {
 
 	httpActiveRequests, err := meter.Int64UpDownCounter("http.server.active_requests",
 		otelmetric.WithDescription("Number of HTTP requests currently being processed"))
+	if err != nil {
+		return nil, err
+	}
+
+	httpResponseSize, err := meter.Int64Histogram("http.server.response.size",
+		otelmetric.WithDescription("HTTP response body size in bytes"),
+		otelmetric.WithUnit("By"),
+		otelmetric.WithExplicitBucketBoundaries(100, 1000, 10000, 100000, 1000000),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +100,7 @@ func New() (*Metrics, error) {
 		httpRequestsTotal:   httpRequestsTotal,
 		httpRequestDuration: httpRequestDuration,
 		httpActiveRequests:  httpActiveRequests,
+		httpResponseSize:    httpResponseSize,
 		cacheHits:           cacheHits,
 		cacheMisses:         cacheMisses,
 		jobsCompleted:       jobsCompleted,
@@ -106,14 +117,15 @@ func (m *Metrics) ShutDown(ctx context.Context) error {
 	return m.provider.Shutdown(ctx)
 }
 
-func (m *Metrics) RecordHttpRequest(ctx context.Context, method, path string, statusCode int, duration time.Duration) {
+func (m *Metrics) RecordHttpRequest(ctx context.Context, method, route string, statusCode int, duration time.Duration, responseBytes int64) {
 	attrs := otelmetric.WithAttributes(
 		attribute.String("http.request.method", method),
-		attribute.String("url.path", path),
+		attribute.String("http.route", route),
 		attribute.String("http.response.status_class", statusClass(statusCode)),
 	)
 	m.httpRequestsTotal.Add(ctx, 1, attrs)
 	m.httpRequestDuration.Record(ctx, duration.Seconds(), attrs)
+	m.httpResponseSize.Record(ctx, responseBytes, attrs)
 }
 
 func (m *Metrics) RecordActiveRequestStart(ctx context.Context) {

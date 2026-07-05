@@ -67,19 +67,30 @@ func RequestLog(m *metrics.Metrics, next http.Handler) http.Handler {
 			"duration", duration,
 		)
 		if m != nil {
-			m.RecordHttpRequest(r.Context(), r.Method, r.URL.Path, rec.status, duration)
+			route := r.Pattern
+			if route == "" {
+				route = r.URL.Path
+			}
+			m.RecordHttpRequest(r.Context(), r.Method, route, rec.status, duration, int64(rec.bytesWritten))
 		}
 	})
 }
 
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status       int
+	bytesWritten int
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	n, err := r.ResponseWriter.Write(b)
+	r.bytesWritten += n
+	return n, err
 }
 
 func RequireAuth(jwtSecret []byte, publicRoutes map[string]struct{}) func(http.Handler) http.Handler {
