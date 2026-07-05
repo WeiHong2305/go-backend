@@ -8,14 +8,25 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type contextKey string
 
 const (
-	UserIDKey  contextKey = "userID"
-	IsAdminKey contextKey = "isAdmin"
+	UserIDKey    contextKey = "userID"
+	IsAdminKey   contextKey = "isAdmin"
+	RequestIDKey contextKey = "requestID"
 )
+
+func RequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := uuid.New().String()
+		ctx := context.WithValue(r.Context(), RequestIDKey, id)
+		w.Header().Add("X-Request-ID", id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 // Recover catches panics so one bad handler cannot take down the process.
 func Recover(next http.Handler) http.Handler {
@@ -40,7 +51,10 @@ func RequestLog(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
+
+		requestID, _ := r.Context().Value(RequestIDKey).(string)
 		slog.Info("request",
+			"request id", requestID,
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,

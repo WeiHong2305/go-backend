@@ -85,7 +85,7 @@ func main() {
 		"POST /login":  {},
 	}
 
-	handler := api.RequestLog(api.Recover(api.RequireAuth([]byte(jwtSecret), publicRoutes)(mux)))
+	handler := api.RequestID(api.RequestLog(api.Recover(api.RequireAuth([]byte(jwtSecret), publicRoutes)(mux))))
 
 	server := &http.Server{
 		Addr:              ":8080",
