@@ -102,6 +102,18 @@ func (m *Metrics) RecordHttpRequest(ctx context.Context, method, path string, st
 	m.httpRequestDuration.Record(ctx, duration.Seconds(), attrs)
 }
 
+func (m *Metrics) RecordCacheHit(ctx context.Context, cacheName string) {
+	m.cacheHits.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("cache.name", cacheName),
+	))
+}
+
+func (m *Metrics) RecordCacheMiss(ctx context.Context, cacheName string) {
+	m.cacheMisses.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("cache.name", cacheName),
+	))
+}
+
 func statusClass(code int) string {
 	return fmt.Sprintf("%dxx", code/100)
 }

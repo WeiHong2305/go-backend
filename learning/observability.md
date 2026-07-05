@@ -29,3 +29,6 @@ Continuous capture of resource usage at the code level (CPU flame graphs, memory
 - Alerting - Rules that proactively notify teams when metrics cross thresholds or anomalies are detected. Turns passive data into actionable signals before users report issues.
 - Dashboarding - Visual representation of metrics and traces for at-a-glance system health.
 - Anomaly detection - Automatic identification of unusual patterns without manually defined thresholds.
+
+# Additional Learnings
+1. Metric attributes should have low, bounded cardinality (method, status class, job type, cache name). Unbounded values (IDs, keys, user IDs) belongs in logs and traces, not metrics

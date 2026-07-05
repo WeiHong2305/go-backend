@@ -52,8 +52,8 @@ func main() {
 	defer redisCfg.client.Close()
 
 	movieRepo := repository.NewPgMovieRepository(db)
-	movieCache := cache.NewRedisCache(redisCfg.client, redisCfg.cacheTTL)
-	idempotencyCache := cache.NewRedisCache(redisCfg.client, 24*time.Hour)
+	movieCache := cache.NewMetricsCache(cache.NewRedisCache(redisCfg.client, redisCfg.cacheTTL), m, "movie")
+	idempotencyCache := cache.NewMetricsCache(cache.NewRedisCache(redisCfg.client, 24*time.Hour), m, "idempotency")
 	movieSvc := service.NewMovieService(movieRepo, movieCache)
 
 	jwtSecret := os.Getenv("SECRET")
