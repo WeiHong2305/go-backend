@@ -37,7 +37,7 @@ func CreateMovieHandler(svc service.MovieService) http.HandlerFunc {
 			Genre:          req.Genre,
 			Rating:         req.Rating,
 		})
-		if mapServiceError(w, err) {
+		if mapServiceError(w, r, err) {
 			return
 		}
 
@@ -54,7 +54,7 @@ func GetMovieHandler(svc service.MovieService) http.HandlerFunc {
 		}
 
 		movie, err := svc.GetMovie(r.Context(), id)
-		if mapServiceError(w, err) {
+		if mapServiceError(w, r, err) {
 			return
 		}
 
@@ -65,7 +65,7 @@ func GetMovieHandler(svc service.MovieService) http.HandlerFunc {
 func GetAllMoviesHandler(svc service.MovieService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		movies, err := svc.GetAllMovies(r.Context())
-		if mapServiceError(w, err) {
+		if mapServiceError(w, r, err) {
 			return
 		}
 		respondJSON(w, http.StatusOK, movies)
@@ -92,7 +92,7 @@ func UpdateMovieHandler(svc service.MovieService) http.HandlerFunc {
 		}
 
 		updated, err := svc.UpdateMovie(r.Context(), id, req)
-		if mapServiceError(w, err) {
+		if mapServiceError(w, r, err) {
 			return
 		}
 		respondJSON(w, http.StatusOK, updated)
@@ -107,7 +107,7 @@ func DeleteMovieHandler(svc service.MovieService) http.HandlerFunc {
 			return
 		}
 
-		if err := svc.DeleteMovie(r.Context(), id); mapServiceError(w, err) {
+		if err := svc.DeleteMovie(r.Context(), id); mapServiceError(w, r, err) {
 			return
 		}
 

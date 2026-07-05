@@ -35,32 +35,33 @@ func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
 
-func mapServiceError(w http.ResponseWriter, err error) bool {
+func mapServiceError(w http.ResponseWriter, r *http.Request, err error) bool {
 	if err == nil {
 		return false
 	}
+	ctx := r.Context()
 	if errors.Is(err, service.ErrNotFound) {
-		slog.Debug("not found", "error", err)
+		slog.DebugContext(ctx, "not found", "error", err)
 		respondError(w, http.StatusNotFound, "not found")
 		return true
 	}
 	if errors.Is(err, service.ErrValidation) {
-		slog.Debug("validation error", "error", err)
+		slog.DebugContext(ctx, "validation error", "error", err)
 		respondError(w, http.StatusBadRequest, err.Error())
 		return true
 	}
 	if errors.Is(err, service.ErrConflict) {
-		slog.Debug("conflict", "error", err)
+		slog.DebugContext(ctx, "conflict", "error", err)
 		respondError(w, http.StatusConflict, err.Error())
 		return true
 	}
 	if errors.Is(err, service.ErrUnauthorized) {
-		slog.Debug("unauthorized", "error", err)
+		slog.DebugContext(ctx, "unauthorized", "error", err)
 		respondError(w, http.StatusUnauthorized, "Invalid email or password")
 		return true
 	}
 	if errors.Is(err, service.ErrUnavailable) {
-		slog.Warn("service unavailable", "error", err)
+		slog.WarnContext(ctx, "service unavailable", "error", err)
 		respondError(w, http.StatusServiceUnavailable, err.Error())
 		return true
 	}
@@ -69,11 +70,11 @@ func mapServiceError(w http.ResponseWriter, err error) bool {
 		return true
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		slog.Warn("request timed out", "error", err)
+		slog.WarnContext(ctx, "request timed out", "error", err)
 		respondError(w, http.StatusGatewayTimeout, "request timed out")
 		return true
 	}
-	slog.Error("service error", "error", err)
+	slog.ErrorContext(ctx, "service error", "error", err)
 	respondError(w, http.StatusInternalServerError, "internal server error")
 	return true
 }

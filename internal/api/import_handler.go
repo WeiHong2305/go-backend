@@ -114,11 +114,11 @@ func ImportMovieHandler(svc service.JobService, idemCache cache.Cache) http.Hand
 		}
 
 		if err := idemCache.Set(r.Context(), idempotencyKey, idempotencyProcessing); err != nil {
-			slog.Error("failed to set idempotency placeholder", "key", idempotencyKey, "error", err)
+			slog.ErrorContext(r.Context(), "failed to set idempotency placeholder", "key", idempotencyKey, "error", err)
 		}
 
 		resp, err := svc.AddJob(model.JobTypeMovieImport, &model.MovieImportPayload{Movies: movies})
-		if mapServiceError(w, err) {
+		if mapServiceError(w, r, err) {
 			idemCache.Delete(r.Context(), idempotencyKey)
 			return
 		}
@@ -172,7 +172,7 @@ func serveFromCache(w http.ResponseWriter, r *http.Request, c cache.Cache, key s
 		return true
 	}
 	if !errors.Is(err, cache.ErrMiss) {
-		slog.Warn("idempotency cache error, proceeding without cache", "error", err)
+		slog.WarnContext(r.Context(), "idempotency cache error, proceeding without cache", "error", err)
 	}
 	return false
 }
@@ -180,10 +180,10 @@ func serveFromCache(w http.ResponseWriter, r *http.Request, c cache.Cache, key s
 func storeInCache(r *http.Request, c cache.Cache, key string, resp model.JobRespond) {
 	respJSON, err := json.Marshal(resp)
 	if err != nil {
-		slog.Error("failed to marshal idempotency response", "key", key, "error", err)
+		slog.ErrorContext(r.Context(), "failed to marshal idempotency response", "key", key, "error", err)
 		return
 	}
 	if err := c.Set(r.Context(), key, string(respJSON)); err != nil {
-		slog.Warn("failed to store idempotency key", "key", key, "error", err)
+		slog.WarnContext(r.Context(), "failed to store idempotency key", "key", key, "error", err)
 	}
 }

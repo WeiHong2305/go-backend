@@ -19,7 +19,7 @@ func HealthHandler(db *sql.DB) http.HandlerFunc {
 		defer cancel()
 
 		if err := db.PingContext(ctx); err != nil {
-			slog.Error("health check: database ping failed", "error", err)
+			slog.ErrorContext(r.Context(), "health check: database ping failed", "error", err)
 			respondJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unhealthy"})
 			return
 		}

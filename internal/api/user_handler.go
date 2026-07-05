@@ -38,7 +38,7 @@ func SignUpHandler(svc service.UserService) http.HandlerFunc {
 			Password: req.Password,
 		})
 
-		if mapServiceError(w, err) {
+		if mapServiceError(w, r, err) {
 			return
 		}
 		respondJSON(w, http.StatusCreated, user)
@@ -69,7 +69,7 @@ func LogInHandler(svc service.UserService) http.HandlerFunc {
 		}
 
 		tokenString, err := svc.LogIn(r.Context(), req.Email, req.Password)
-		if mapServiceError(w, err) {
+		if mapServiceError(w, r, err) {
 			return
 		}
 
@@ -102,7 +102,7 @@ func GetUserHandler(svc service.UserService) http.HandlerFunc {
 		}
 
 		user, err := svc.GetUser(r.Context(), id)
-		if mapServiceError(w, err) {
+		if mapServiceError(w, r, err) {
 			return
 		}
 		respondJSON(w, http.StatusOK, user)
@@ -112,7 +112,7 @@ func GetUserHandler(svc service.UserService) http.HandlerFunc {
 func GetAllUsersHandler(svc service.UserService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		users, err := svc.GetAllUsers(r.Context())
-		if mapServiceError(w, err) {
+		if mapServiceError(w, r, err) {
 			return
 		}
 		respondJSON(w, http.StatusOK, users)

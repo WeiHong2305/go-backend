@@ -33,7 +33,7 @@ func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				slog.Error("panic recovered",
+				slog.ErrorContext(r.Context(), "panic recovered",
 					"panic", rec,
 					"path", r.URL.Path,
 					"stack", string(debug.Stack()),
@@ -52,7 +52,7 @@ func RequestLog(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 
-		slog.Info("request",
+		slog.InfoContext(r.Context(), "request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,

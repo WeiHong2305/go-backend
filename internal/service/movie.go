@@ -57,14 +57,14 @@ func (s *movieService) GetMovie(ctx context.Context, id int64) (model.Movie, err
 	if err == nil {
 		var movie model.Movie
 		if err := json.Unmarshal([]byte(cacheValue), &movie); err == nil {
-			slog.Debug("cache hit", "key", cacheKey)
+			slog.DebugContext(ctx, "cache hit", "key", cacheKey)
 			return movie, nil
 		}
 	} else if !errors.Is(err, cache.ErrMiss) {
-		slog.Warn("failed to read from cache", "key", cacheKey, "error", err)
+		slog.WarnContext(ctx, "failed to read from cache", "key", cacheKey, "error", err)
 	}
 
-	slog.Info("Cache Miss")
+	slog.InfoContext(ctx, "Cache Miss")
 	movie, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return model.Movie{}, mapRepoError(err)
@@ -73,7 +73,7 @@ func (s *movieService) GetMovie(ctx context.Context, id int64) (model.Movie, err
 	data, err := json.Marshal(movie)
 	if err == nil {
 		if err := s.cache.Set(ctx, cacheKey, string(data)); err != nil {
-			slog.Warn("failed to write to cache", "key", cacheKey, "error", err)
+			slog.WarnContext(ctx, "failed to write to cache", "key", cacheKey, "error", err)
 		}
 	}
 
@@ -85,11 +85,11 @@ func (s *movieService) GetAllMovies(ctx context.Context) ([]model.Movie, error) 
 	if err == nil {
 		var movies []model.Movie
 		if err := json.Unmarshal([]byte(cacheValue), &movies); err == nil {
-			slog.Debug("cache hit", "key", movieListCacheKey)
+			slog.DebugContext(ctx, "cache hit", "key", movieListCacheKey)
 			return movies, nil
 		}
 	} else if !errors.Is(err, cache.ErrMiss) {
-		slog.Warn("failed to read from cache", "key", movieListCacheKey, "error", err)
+		slog.WarnContext(ctx, "failed to read from cache", "key", movieListCacheKey, "error", err)
 	}
 
 	movies, err := s.repo.GetAll(ctx)
@@ -103,7 +103,7 @@ func (s *movieService) GetAllMovies(ctx context.Context) ([]model.Movie, error) 
 	data, err := json.Marshal(movies)
 	if err == nil {
 		if err := s.cache.Set(ctx, movieListCacheKey, string(data)); err != nil {
-			slog.Warn("failed to write to cache", "key", movieListCacheKey, "error", err)
+			slog.WarnContext(ctx, "failed to write to cache", "key", movieListCacheKey, "error", err)
 		}
 	}
 	return movies, nil
@@ -161,7 +161,7 @@ func (s *movieService) DeleteMovie(ctx context.Context, id int64) error {
 func (s *movieService) invalidateCache(ctx context.Context, keys ...string) {
 	for _, key := range keys {
 		if err := s.cache.Delete(ctx, key); err != nil {
-			slog.Warn("failed to invalidate cache", "key", key, "error", err)
+			slog.WarnContext(ctx, "failed to invalidate cache", "key", key, "error", err)
 		}
 	}
 }
