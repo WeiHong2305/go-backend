@@ -114,6 +114,25 @@ func (m *Metrics) RecordCacheMiss(ctx context.Context, cacheName string) {
 	))
 }
 
+func (m *Metrics) RecordJobCompleted(ctx context.Context, jobType string) {
+	m.jobsCompleted.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("job.type", jobType),
+	))
+}
+
+func (m *Metrics) RecordJobFailed(ctx context.Context, jobType string) {
+	m.jobsFailed.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("job.type", jobType),
+	))
+}
+
+func (m *Metrics) RecordJobRetry(ctx context.Context, jobType string, attempt int) {
+	m.jobRetries.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("job.type", jobType),
+		attribute.Int("job.attempt", attempt),
+	))
+}
+
 func statusClass(code int) string {
 	return fmt.Sprintf("%dxx", code/100)
 }

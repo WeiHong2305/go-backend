@@ -3,10 +3,12 @@ package worker
 import (
 	"context"
 	"fmt"
-	"go-backend/internal/model"
 	"log/slog"
 	"sync"
 	"time"
+
+	"go-backend/internal/metrics"
+	"go-backend/internal/model"
 )
 
 const jobTimeout = 5 * time.Minute
@@ -21,9 +23,10 @@ type Pool struct {
 	stopCh   <-chan struct{}
 	baseCtx  context.Context
 	cancel   context.CancelFunc
+	metrics  *metrics.Metrics
 }
 
-func NewPool(queue chan model.Job, workers int, stopCh <-chan struct{}) *Pool {
+func NewPool(queue chan model.Job, workers int, stopCh <-chan struct{}, m *metrics.Metrics) *Pool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Pool{
 		queue:    queue,
@@ -32,6 +35,7 @@ func NewPool(queue chan model.Job, workers int, stopCh <-chan struct{}) *Pool {
 		stopCh:   stopCh,
 		baseCtx:  ctx,
 		cancel:   cancel,
+		metrics:  m,
 	}
 }
 
@@ -94,6 +98,9 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 		if job.RetryCount < model.MaxRetries {
 			job.RetryCount++
 			job.Status = model.Pending
+			if p.metrics != nil {
+				p.metrics.RecordJobRetry(ctx, job.Type, job.RetryCount)
+			}
 			delay := time.Duration(1<<job.RetryCount) * time.Second
 			slog.Warn("job failed, scheduling retry",
 				"worker_id", workerID,
@@ -123,6 +130,9 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 			return
 		}
 		job.Status = model.Failed
+		if p.metrics != nil {
+			p.metrics.RecordJobFailed(ctx, job.Type)
+		}
 		slog.Error("job failed, retries exhausted",
 			"worker_id", workerID,
 			"job_id", job.ID,
@@ -133,6 +143,9 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 	}
 
 	job.Status = model.Completed
+	if p.metrics != nil {
+		p.metrics.RecordJobCompleted(ctx, job.Type)
+	}
 	slog.Info("job completed",
 		"worker_id", workerID,
 		"job_id", job.ID,

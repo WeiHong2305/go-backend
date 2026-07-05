@@ -65,7 +65,7 @@ func main() {
 	stopCh := make(chan struct{})
 	jobQueue := make(chan model.Job, 100)
 	jobSvc := service.NewJobService(jobQueue)
-	pool := worker.NewPool(jobQueue, 4, stopCh)
+	pool := worker.NewPool(jobQueue, 4, stopCh, m)
 	pool.Register(model.JobTypeMovieImport, handlers.ImportMovies(movieSvc))
 	pool.Start()
 
