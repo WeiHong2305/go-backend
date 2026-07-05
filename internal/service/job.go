@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"go-backend/internal/model"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,6 +34,10 @@ func (j *jobService) AddJob(jobType string, payload model.JobPayload) (model.Job
 
 	select {
 	case j.queue <- job:
+		slog.Info("job created",
+			"job_id", job.ID,
+			"type", job.Type,
+		)
 	default:
 		return model.JobRespond{}, fmt.Errorf("%w: job queue is full", ErrUnavailable)
 	}
