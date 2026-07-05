@@ -96,50 +96,7 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 
 	start := time.Now()
 	if err := h(ctx, job); err != nil {
-		if job.RetryCount < model.MaxRetries {
-			job.RetryCount++
-			job.Status = model.Pending
-			if p.metrics != nil {
-				p.metrics.RecordJobRetry(ctx, job.Type, job.RetryCount)
-			}
-			delay := time.Duration(1<<job.RetryCount) * time.Second
-			slog.Warn("job failed, scheduling retry",
-				"worker_id", workerID,
-				"job_id", job.ID,
-				"retry", job.RetryCount,
-				"delay", delay,
-				"error", err,
-			)
-			go func() {
-				select {
-				case <-p.stopCh:
-					slog.Warn("shutdown: dropping retry",
-						"job_id", job.ID,
-						"retry", job.RetryCount,
-					)
-					return
-				case <-time.After(delay):
-				}
-				select {
-				case p.queue <- *job:
-				case <-p.stopCh:
-					slog.Warn("shutdown: could not requeue job",
-						"job_id", job.ID,
-					)
-				}
-			}()
-			return
-		}
-		job.Status = model.Failed
-		if p.metrics != nil {
-			p.metrics.RecordJobFailed(ctx, job.Type)
-		}
-		slog.Error("job failed, retries exhausted",
-			"worker_id", workerID,
-			"job_id", job.ID,
-			"retries", job.RetryCount,
-			"error", err,
-		)
+		p.handleFailure(ctx, workerID, job, err)
 		return
 	}
 
@@ -151,4 +108,58 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 		"worker_id", workerID,
 		"job_id", job.ID,
 	)
+}
+
+func (p *Pool) handleFailure(ctx context.Context, workerID int, job *model.Job, err error) {
+	if job.RetryCount < model.MaxRetries {
+		p.scheduleRetry(ctx, workerID, job, err)
+		return
+	}
+
+	job.Status = model.Failed
+	if p.metrics != nil {
+		p.metrics.RecordJobFailed(ctx, job.Type)
+	}
+	slog.Error("job failed, retries exhausted",
+		"worker_id", workerID,
+		"job_id", job.ID,
+		"retries", job.RetryCount,
+		"error", err,
+	)
+}
+
+func (p *Pool) scheduleRetry(ctx context.Context, workerID int, job *model.Job, err error) {
+	job.RetryCount++
+	job.Status = model.Pending
+	if p.metrics != nil {
+		p.metrics.RecordJobRetry(ctx, job.Type, job.RetryCount)
+	}
+
+	delay := time.Duration(1<<job.RetryCount) * time.Second
+	slog.Warn("job failed, scheduling retry",
+		"worker_id", workerID,
+		"job_id", job.ID,
+		"retry", job.RetryCount,
+		"delay", delay,
+		"error", err,
+	)
+
+	go func() {
+		select {
+		case <-p.stopCh:
+			slog.Warn("shutdown: dropping retry",
+				"job_id", job.ID,
+				"retry", job.RetryCount,
+			)
+			return
+		case <-time.After(delay):
+		}
+		select {
+		case p.queue <- *job:
+		case <-p.stopCh:
+			slog.Warn("shutdown: could not requeue job",
+				"job_id", job.ID,
+			)
+		}
+	}()
 }
