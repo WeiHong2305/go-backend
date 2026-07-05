@@ -38,7 +38,9 @@ func main() {
 	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: loglevel})
 	slog.SetDefault(slog.New(logging.NewContextHandler(jsonHandler)))
 
-	m, err := metrics.New()
+	jobQueue := make(chan model.Job, 100)
+
+	m, err := metrics.New(func() int { return len(jobQueue) })
 	if err != nil {
 		slog.Error("failed to initialize metrics", "error", err)
 		os.Exit(1)
@@ -63,7 +65,6 @@ func main() {
 	}
 
 	stopCh := make(chan struct{})
-	jobQueue := make(chan model.Job, 100)
 	jobSvc := service.NewJobService(jobQueue)
 	pool := worker.NewPool(jobQueue, 4, stopCh, m)
 	pool.Register(model.JobTypeMovieImport, handlers.ImportMovies(movieSvc))
