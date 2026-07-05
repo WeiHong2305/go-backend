@@ -109,7 +109,7 @@ func New(queueLenFunc func() int) (*Metrics, error) {
 
 	jobQueueDepth, err := meter.Int64ObservableGauge("jobs.queue_depth",
 		otelmetric.WithDescription("Number of jobs waiting in the queue"),
-		otelmetric.WithInt64Callback(func(_ context.Context, o otelmetric.Int64Observable) error {
+		otelmetric.WithInt64Callback(func(_ context.Context, o otelmetric.Int64Observer) error {
 			o.Observe(int64(queueLenFunc()))
 			return nil
 		}),
