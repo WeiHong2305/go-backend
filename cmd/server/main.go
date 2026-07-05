@@ -75,6 +75,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", api.RootHandler)
 	mux.HandleFunc("/health", api.HealthHandler(db))
+	mux.Handle("GET /metrics", m.Handler())
 
 	mux.HandleFunc("POST /movies", api.CreateMovieHandler(movieSvc))
 	mux.HandleFunc("GET /movies/{id}", api.GetMovieHandler(movieSvc))
@@ -91,6 +92,7 @@ func main() {
 	publicRoutes := map[string]struct{}{
 		"GET /":        {},
 		"GET /health":  {},
+		"GET /metrics": {},
 		"POST /signup": {},
 		"POST /login":  {},
 	}

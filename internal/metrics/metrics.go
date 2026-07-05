@@ -3,8 +3,10 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	otelmetric "go.opentelemetry.io/otel/metric"
@@ -86,6 +88,10 @@ func New() (*Metrics, error) {
 		jobsFailed:          jobsFailed,
 		jobRetries:          jobRetries,
 	}, nil
+}
+
+func (m *Metrics) Handler() http.Handler {
+	return promhttp.Handler()
 }
 
 func (m *Metrics) ShutDown(ctx context.Context) error {
