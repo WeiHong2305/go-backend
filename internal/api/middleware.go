@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"go-backend/internal/logging"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -14,15 +15,14 @@ import (
 type contextKey string
 
 const (
-	UserIDKey    contextKey = "userID"
-	IsAdminKey   contextKey = "isAdmin"
-	RequestIDKey contextKey = "requestID"
+	UserIDKey  contextKey = "userID"
+	IsAdminKey contextKey = "isAdmin"
 )
 
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := uuid.New().String()
-		ctx := context.WithValue(r.Context(), RequestIDKey, id)
+		ctx := context.WithValue(r.Context(), logging.RequestIDKey, id)
 		w.Header().Add("X-Request-ID", id)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -52,9 +52,7 @@ func RequestLog(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 
-		requestID, _ := r.Context().Value(RequestIDKey).(string)
 		slog.Info("request",
-			"request id", requestID,
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,

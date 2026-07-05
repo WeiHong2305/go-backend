@@ -12,6 +12,7 @@ import (
 
 	"go-backend/internal/api"
 	"go-backend/internal/cache"
+	"go-backend/internal/logging"
 	"go-backend/internal/model"
 	"go-backend/internal/repository"
 	"go-backend/internal/service"
@@ -33,7 +34,8 @@ func main() {
 	default:
 		loglevel = slog.LevelInfo
 	}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: loglevel})))
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: loglevel})
+	slog.SetDefault(slog.New(logging.NewContextHandler(jsonHandler)))
 
 	db := newDatabase()
 	defer db.Close()
