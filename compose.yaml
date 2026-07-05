@@ -44,6 +44,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      
+  prometheus:
+    image: prom/prometheus:v3.13.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - api
 
 volumes:
   pgdata:
