@@ -50,6 +50,11 @@ func Recover(next http.Handler) http.Handler {
 // RequestLog logs method, path, status, and duration for every request.
 func RequestLog(m *metrics.Metrics, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if m != nil {
+			m.RecordActiveRequestStart(r.Context())
+			defer m.RecordActiveRequestEnd(r.Context())
+		}
+
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)

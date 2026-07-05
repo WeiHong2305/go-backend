@@ -18,6 +18,7 @@ type Metrics struct {
 
 	httpRequestsTotal   otelmetric.Int64Counter
 	httpRequestDuration otelmetric.Float64Histogram
+	httpActiveRequests  otelmetric.Int64UpDownCounter
 	cacheHits           otelmetric.Int64Counter
 	cacheMisses         otelmetric.Int64Counter
 	jobsCompleted       otelmetric.Int64Counter
@@ -44,6 +45,12 @@ func New() (*Metrics, error) {
 		otelmetric.WithDescription("HTTP request duration in seconds"),
 		otelmetric.WithUnit("s"),
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	httpActiveRequests, err := meter.Int64UpDownCounter("http.server.active_requests",
+		otelmetric.WithDescription("Number of HTTP requests currently being processed"))
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +89,7 @@ func New() (*Metrics, error) {
 		provider:            provider,
 		httpRequestsTotal:   httpRequestsTotal,
 		httpRequestDuration: httpRequestDuration,
+		httpActiveRequests:  httpActiveRequests,
 		cacheHits:           cacheHits,
 		cacheMisses:         cacheMisses,
 		jobsCompleted:       jobsCompleted,
@@ -106,6 +114,14 @@ func (m *Metrics) RecordHttpRequest(ctx context.Context, method, path string, st
 	)
 	m.httpRequestsTotal.Add(ctx, 1, attrs)
 	m.httpRequestDuration.Record(ctx, duration.Seconds(), attrs)
+}
+
+func (m *Metrics) RecordActiveRequestStart(ctx context.Context) {
+	m.httpActiveRequests.Add(ctx, 1)
+}
+
+func (m *Metrics) RecordActiveRequestEnd(ctx context.Context) {
+	m.httpActiveRequests.Add(ctx, -1)
 }
 
 func (m *Metrics) RecordCacheHit(ctx context.Context, cacheName string) {
