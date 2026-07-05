@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
-	"go-backend/internal/logging"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"time"
+
+	"go-backend/internal/logging"
+	"go-backend/internal/metrics"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -46,18 +48,22 @@ func Recover(next http.Handler) http.Handler {
 }
 
 // RequestLog logs method, path, status, and duration for every request.
-func RequestLog(next http.Handler) http.Handler {
+func RequestLog(m *metrics.Metrics, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 
+		duration := time.Since(start)
 		slog.InfoContext(r.Context(), "request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
-			"duration", time.Since(start),
+			"duration", duration,
 		)
+		if m != nil {
+			m.RecordHttpRequest(r.Context(), r.Method, r.URL.Path, rec.status, duration)
+		}
 	})
 }
 

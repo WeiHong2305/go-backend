@@ -13,6 +13,7 @@ import (
 	"go-backend/internal/api"
 	"go-backend/internal/cache"
 	"go-backend/internal/logging"
+	"go-backend/internal/metrics"
 	"go-backend/internal/model"
 	"go-backend/internal/repository"
 	"go-backend/internal/service"
@@ -36,6 +37,13 @@ func main() {
 	}
 	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: loglevel})
 	slog.SetDefault(slog.New(logging.NewContextHandler(jsonHandler)))
+
+	m, err := metrics.New()
+	if err != nil {
+		slog.Error("failed to initialize metrics", "error", err)
+		os.Exit(1)
+	}
+	defer m.ShutDown(context.Background())
 
 	db := newDatabase()
 	defer db.Close()
@@ -87,7 +95,7 @@ func main() {
 		"POST /login":  {},
 	}
 
-	handler := api.RequestID(api.RequestLog(api.Recover(api.RequireAuth([]byte(jwtSecret), publicRoutes)(mux))))
+	handler := api.RequestID(api.RequestLog(m, api.Recover(api.RequireAuth([]byte(jwtSecret), publicRoutes)(mux))))
 
 	server := &http.Server{
 		Addr:              ":8080",
