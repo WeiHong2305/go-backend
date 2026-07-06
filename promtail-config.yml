@@ -9,12 +9,15 @@ clients:
 
 scrape_configs:
   - job_name: docker
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: docker
-          __path__: /var/lib/docker/containers/*/*-json.log
+    docker_sd_configs:
+      - host: unix://var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: ["__meta_docker_container_name"]
+        target_label: container
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/go-backend-(.*)-1"
+        target_label: service
     pipeline_stages:
       - docker: {}
       - json:
