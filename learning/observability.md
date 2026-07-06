@@ -58,3 +58,7 @@ A trace represents the full journey of a single request through your system. It'
 - Part of a standard (W3C TraceContext) - propagated via traceparent header across services
 - Purpose: tie spans together into a trace tree, with timing and hierarchy
 - Carries more structure (trace_id + span_id + parent relationships)
+
+
+# Why 2 Endpoints (/health & /ready)
+Kubernetes (orchestrator) knows whether to restart vs just stop routing traffic (might recover)

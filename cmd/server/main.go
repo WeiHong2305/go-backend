@@ -83,7 +83,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", api.RootHandler)
-	mux.HandleFunc("/health", api.HealthHandler(db))
+	mux.HandleFunc("/health", api.HealthHandler)
+	mux.HandleFunc("/ready", api.ReadyHandler(db))
 	mux.Handle("GET /metrics", m.Handler())
 
 	mux.HandleFunc("POST /movies", api.CreateMovieHandler(movieSvc))
