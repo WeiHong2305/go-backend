@@ -148,7 +148,7 @@
             },
             "targets": [
                 {
-                    "expr": "sum(rate(http_server_request_total[1m])) by (http_route)",
+                    "expr": "sum(rate(http_server_requests_total[1m])) by (http_route)",
                     "legendFormat": "{{http_route}}"
                 }
             ],
