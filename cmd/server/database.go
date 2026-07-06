@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"time"
+
+	"github.com/XSAM/otelsql"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
 func newDatabase() *sql.DB {
@@ -15,7 +18,9 @@ func newDatabase() *sql.DB {
 		slog.Warn("DATABASE_URL not set, using default local connection string")
 	}
 
-	db, err := sql.Open("postgres", connStr)
+	db, err := otelsql.Open("postgres", connStr,
+		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
+	)
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)

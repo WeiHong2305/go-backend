@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -12,6 +13,11 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type contextKey string
@@ -49,10 +55,21 @@ func Recover(next http.Handler) http.Handler {
 
 // RequestLog logs method, path, status, and duration for every request.
 func RequestLog(m *metrics.Metrics, next http.Handler) http.Handler {
+	tracer := otel.Tracer("go-backend")
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+
+		ctx, span := tracer.Start(ctx, fmt.Sprintf("%s %s", r.Method, r.URL.Path),
+			trace.WithSpanKind(trace.SpanKindServer),
+		)
+		defer span.End()
+
+		r = r.WithContext(ctx)
+
 		if m != nil {
-			m.RecordActiveRequestStart(r.Context())
-			defer m.RecordActiveRequestEnd(r.Context())
+			m.RecordActiveRequestStart(ctx)
+			defer m.RecordActiveRequestEnd(ctx)
 		}
 
 		start := time.Now()
@@ -60,18 +77,29 @@ func RequestLog(m *metrics.Metrics, next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 
 		duration := time.Since(start)
-		slog.InfoContext(r.Context(), "request",
+
+		route := r.Pattern
+		if route == "" {
+			route = r.URL.Path
+		}
+
+		span.SetAttributes(
+			attribute.String("http.method", r.Method),
+			attribute.String("http.route", route),
+			attribute.Int("http.status_code", rec.status),
+		)
+		if rec.status >= 500 {
+			span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", rec.status))
+		}
+
+		slog.InfoContext(ctx, "request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
 			"duration", duration,
 		)
 		if m != nil {
-			route := r.Pattern
-			if route == "" {
-				route = r.URL.Path
-			}
-			m.RecordHttpRequest(r.Context(), r.Method, route, rec.status, duration, int64(rec.bytesWritten))
+			m.RecordHttpRequest(ctx, r.Method, route, rec.status, duration, int64(rec.bytesWritten))
 		}
 	})
 }

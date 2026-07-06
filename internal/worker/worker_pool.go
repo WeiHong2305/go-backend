@@ -9,6 +9,11 @@ import (
 
 	"go-backend/internal/metrics"
 	"go-backend/internal/model"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const jobTimeout = 5 * time.Minute
@@ -94,8 +99,21 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 	ctx, cancel := context.WithTimeout(p.baseCtx, jobTimeout)
 	defer cancel()
 
+	tracer := otel.Tracer("go-backend")
+	ctx, span := tracer.Start(ctx, fmt.Sprintf("job %s", job.Type),
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("job.type", job.Type),
+			attribute.String("job.id", job.ID),
+			attribute.Int("job.attempt", job.RetryCount+1),
+		),
+	)
+	defer span.End()
+
 	start := time.Now()
 	if err := h(ctx, job); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		p.handleFailure(ctx, workerID, job, err)
 		return
 	}

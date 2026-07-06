@@ -44,6 +44,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      tempo:
+        condition: service_started
       
   prometheus:
     image: prom/prometheus:v3.13.0
@@ -53,6 +55,15 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     depends_on:
       - api
+
+  tempo:
+    image: grafana/tempo:r260-85ad7d8-1931-1
+    volumes:
+      - ./tempo-config.yml:/etc/tempo/config.yml
+    command: -config.file=/etc/tempo/config.yml
+    ports:
+      - "3200:3200"
+
   loki:
     image: grafana/loki:3.7.0
     ports:
@@ -83,6 +94,7 @@ services:
     depends_on:
       - prometheus
       - loki
+      - tempo
 
 volumes:
   pgdata:

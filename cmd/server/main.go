@@ -17,6 +17,7 @@ import (
 	"go-backend/internal/model"
 	"go-backend/internal/repository"
 	"go-backend/internal/service"
+	"go-backend/internal/tracing"
 	"go-backend/internal/worker"
 	"go-backend/internal/worker/handlers"
 
@@ -39,6 +40,13 @@ func main() {
 	slog.SetDefault(slog.New(logging.NewContextHandler(jsonHandler)))
 
 	jobQueue := make(chan model.Job, 100)
+
+	_, tracingShutdown, err := tracing.New(context.Background())
+	if err != nil {
+		slog.Error("failed to initialize tracing", "error", err)
+		os.Exit(1)
+	}
+	defer tracingShutdown(context.Background())
 
 	m, err := metrics.New(func() int { return len(jobQueue) })
 	if err != nil {
