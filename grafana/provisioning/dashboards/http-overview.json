@@ -1,0 +1,38 @@
+{
+    "uid": "http-overview",
+    "title": "HTTP Overview",
+    "timezone": "browser",
+    "refresh": "10s",
+    "time": {
+        "from": "now-30m",
+        "to": "now"
+    },
+    "panels": [
+        {
+            "title": "Request Rate",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 0
+            },
+            "datasource": {
+                "type": "prometheus",
+                "uid": ""
+            },
+            "targets": [
+                {
+                    "expr": "sum(rate(http_server_requests_total[1m]))",
+                    "legendFormat": "req/s"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "reqps"
+                }
+            }
+        }
+    ],
+    "schemaVersion": 39
+}
