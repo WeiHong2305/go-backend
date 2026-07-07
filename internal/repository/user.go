@@ -68,7 +68,7 @@ func (r *PgUserRepository) GetById(ctx context.Context, id int64) (model.User, e
 	err := r.db.QueryRowContext(ctx, query, id).Scan(&user.ID, &user.Email, &user.Name, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return model.User{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+			return model.User{}, fmt.Errorf("%w: %d", ErrNotFound, id)
 		}
 		return model.User{}, fmt.Errorf("failed to fetch user: %w", err)
 	}
