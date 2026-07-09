@@ -62,3 +62,31 @@ A trace represents the full journey of a single request through your system. It'
 
 # Why 2 Endpoints (/health & /ready)
 Kubernetes (orchestrator) knows whether to restart vs just stop routing traffic (might recover)
+
+
+## Engineering Thinking
+
+1. Why are logs alone not enough?
+- Logs only tell us what happened at specific events, after the fact
+- They won't warn us in advance about performance degradation - you'd have to grep through millions of lines to notice "requests are getting slower"
+- Logs don't aggregate well. You can't easily answer "what's the 95th percentile latency over the last hour?" from raw logs. That's what metrics are for - pre-aggregated, queryable, and alertable.
+
+2. When would you look at metrics instead of logs?
+- When thinking about system health and trends; is latency increasing? are error rates spiking? do we need to scale?
+- Metrics answer "how is the system doing right now" (dashboards, alerts). Logs answer "what exactly happened for this one request" (debugging).
+- Rule of thumb: metrics for detection (something is wrong), logs for diagnosis (what specifically broke), traces for localization (where in the call chain).
+
+3. What information should never be logged?
+- Passwords, secrets, API keys, tokens
+- Personally identifiable Information (PII): emails, phone numbers, addresses, national IDs - depends on compliance (GDPR, HIPAA)
+- Credit card numbers, bank details
+- Full request bodies that may containt the above
+- Session tokens or JWTs (anyone reading logs could impersonate users)
+
+4. If a customer reports "my import failed", what would you want?
+- Ask for the job_id or the request_id
+- If unavailable, ask for approximate time - their user identity, grep logs filtered by time window and import-related messages
+- In logs: look for the job lifecycle - created -> processing -> failed/completed. The error message on failure tells you what broke.
+- In metrics: check job_failed spike around that tinme, job duration (did it timeout?), queue depth (was it stuck waiting?)
+- In traces: find the trace by time range, see the span waterfall - where exactly did it fail?
+- Key insight: request_id or job_id is the bridge between what the user sees and what your observability stack stores? Without corelation IDs, you're searching blind.
