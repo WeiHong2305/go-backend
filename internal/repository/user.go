@@ -94,5 +94,8 @@ func (r *PgUserRepository) GetAll(ctx context.Context) ([]model.User, error) {
 		}
 		users = append(users, user)
 	}
-	return users, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users: %w", err)
+	}
+	return users, nil
 }

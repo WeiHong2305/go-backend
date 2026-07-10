@@ -170,5 +170,5 @@ func mapRepoError(err error) error {
 	if errors.Is(err, repository.ErrNotFound) {
 		return ErrNotFound
 	}
-	return err
+	return fmt.Errorf("repository: %w", err)
 }

@@ -39,7 +39,7 @@ func (j *jobService) AddJob(jobType string, payload model.JobPayload) (model.Job
 			"type", job.Type,
 		)
 	default:
-		return model.JobRespond{}, fmt.Errorf("%w: job queue is full", ErrUnavailable)
+		return model.JobRespond{}, fmt.Errorf("job queue is full: %w", ErrUnavailable)
 	}
 
 	return model.JobRespond{

@@ -31,7 +31,7 @@ func NewUserService(repo repository.UserRepository, jwtSecret []byte) *userServi
 func (s *userService) SignUp(ctx context.Context, user model.User) (model.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return model.User{}, fmt.Errorf("Failed to hash password: %w", err)
+		return model.User{}, fmt.Errorf("hash password: %w", err)
 	}
 
 	created, err := s.repo.Create(ctx, model.User{
@@ -40,10 +40,7 @@ func (s *userService) SignUp(ctx context.Context, user model.User) (model.User, 
 		Password: string(hash),
 	})
 	if err != nil {
-		if errors.Is(err, repository.ErrDuplicateEmail) {
-			return model.User{}, fmt.Errorf("email already taken: %w", ErrConflict)
-		}
-		return model.User{}, err
+		return model.User{}, mapUserRepoError(err)
 	}
 
 	created.Password = ""
@@ -56,7 +53,7 @@ func (s *userService) LogIn(ctx context.Context, email, password string) (string
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", fmt.Errorf("invalid email or password: %w", ErrUnauthorized)
 		}
-		return "", err
+		return "", fmt.Errorf("get user: %w", err)
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
@@ -71,7 +68,7 @@ func (s *userService) LogIn(ctx context.Context, email, password string) (string
 
 	tokenString, err := token.SignedString(s.jwtSecret)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("sign token: %w", err)
 	}
 
 	return tokenString, nil
@@ -80,14 +77,26 @@ func (s *userService) LogIn(ctx context.Context, email, password string) (string
 func (s *userService) GetUser(ctx context.Context, id int64) (model.User, error) {
 	user, err := s.repo.GetById(ctx, id)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return model.User{}, fmt.Errorf("user %w: %d", ErrNotFound, id)
-		}
-		return model.User{}, err
+		return model.User{}, mapUserRepoError(err)
 	}
 	return user, nil
 }
 
 func (s *userService) GetAllUsers(ctx context.Context) ([]model.User, error) {
-	return s.repo.GetAll(ctx)
+	users, err := s.repo.GetAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get all users: %w", err)
+	}
+	return users, nil
+}
+
+func mapUserRepoError(err error) error {
+	switch {
+	case errors.Is(err, repository.ErrNotFound):
+		return ErrNotFound
+	case errors.Is(err, repository.ErrDuplicateEmail):
+		return fmt.Errorf("email already taken: %w", ErrConflict)
+	default:
+		return fmt.Errorf("repository: %w", err)
+	}
 }
