@@ -62,7 +62,7 @@ func mapServiceError(w http.ResponseWriter, r *http.Request, err error) bool {
 	}
 	if errors.Is(err, service.ErrUnavailable) {
 		slog.WarnContext(ctx, "service unavailable", "error", err)
-		respondError(w, http.StatusServiceUnavailable, err.Error())
+		respondError(w, http.StatusServiceUnavailable, "service temporarily unavailable")
 		return true
 	}
 	if errors.Is(err, context.Canceled) {
