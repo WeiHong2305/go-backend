@@ -222,3 +222,24 @@ func mapServiceError(w http.ResponseWriter, r *http.Request, err error) {
     }
 }
 ```
+
+## Retry Storms
+
+A retry storm happens when many clients retry failed requests simultaneously, amplifying load on an already struggling services.
+
+### Exponential backoff
+
+Spreads retries over time and gives the service breathing room. But still **Synchronized**, just less frequently.
+
+### Jitter solves synchronization
+
+Jitter adds randomness to the wait
+
+```go
+// Widest spread
+wait = random(0, baseDelay * 2^attempt)
+
+// Common alternative (Equal jitter)
+temp = baseDelay * 2^attempt
+wait = temp/2 + random(0, temp/2)
+```
