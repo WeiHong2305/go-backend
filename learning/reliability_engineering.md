@@ -16,7 +16,7 @@ Making systems keep woring correctly under real-world conditions - controlling t
 ### Leaks
 A **leak** is something allocated but never freed - it stays alive consuming resources forever (or until the process dies). Like a water leak: slow, invisible, cumulative.
 
-## Go Context (`context` package)
+# Go Context (`context` package)
 
 Controls cancellation, deadlines, and request-scoped values across goroutine boundaries.
 
@@ -142,4 +142,83 @@ defer stop()
 Registers cleanup that fires on cancellation - alternative to spawning a goroutine just to watch`ctx.Done()`.
 
 
+# Errors
 
+## Generic Errors vs Wrapped Errors
+
+A generic error is a bare, context-free error - either returned raw from a library or created with a vague message:
+
+```go
+// Returning a raw library error - no context about what YOUR code was doing
+func (s *userService) SignUp(ctx context.Context, user model.User) (model.User, error) {
+    hash, err := bcrypt.GenerateFromPassword(...)
+    if err != nil {
+        return model.User{}, err // just "crypto/bcrypt: hasher is not available"
+    }
+}
+```
+
+```go
+// Or a generic sentinel with no trace
+return errors.New("something went wrong")
+```
+
+When this hits your logs: `"error": "crypto/bcrypt: hasher is not available"` - you have no idea which function, which user, or which step failed.
+
+
+## Wrapped erros
+
+A wrapped error adds context at each layer while preserving the original cause:
+
+```go
+return fmt.Errorf("hash password: %w", err)
+// produces: "hash password: crypto/bcrypt: hasher is not available"
+```
+
+Each layer adds its own context:
+`repository: "failed to fetch user: connection refused"`
+`service: "get user: failed to fetch user: connection refused"`
+
+The `%w` verb is key - it wraps (not replaces) the original, so `errors.Is()` and `errors.As()` still work through the chains.
+
+### When to wrap vs when not to
+| Situation | Do |
+|---|---|
+| Error crosses a layer boundary (repo -> service -> handler) | Wrap with context |
+| Error is translated to a different sentinel | Don't wrap the original - return the new sentinel |
+| Error is being logged and discarded | Don't wrap, just log |
+| Error message is already clear enough | Don't double-wrap ("fetch user: failed to fetch user: ...") |
+| Returning to the same package/function | Usually don't wrap |
+
+> The rule of thumb: **wrap when the error crosses a boundary where the reader would lose context about what operation failed.**
+
+> Go has stack trace for **panic** (crashes), but not for **errors** (normal return values). Errors in go are common, and will be expensive to have stack trace for each of them.
+
+## Avoiding Internal Details in HTTP Responses
+
+### Problem
+
+Your service errors carry context for debugging, if forward `err.Error()` to the client, you leak:
+- Infrastructure details - database IPs, queue depths, driver names
+- Stack context - which internal function failed
+- Technology choices - which libraries you use (attach surface info)
+
+### Solution
+
+A **translation layer** at the HTTP boundary that maps internal errors to safe client messages:
+```go
+func mapServiceError(w http.ResponseWriter, r *http.Request, err error) {
+    // Log the FULL error (for debugging)
+    slog.ErrorContext(r.Context(), "request failed", "error", err)
+
+    // Return only SAFE messages to the client
+    switch {
+    case errors.Is(err, service.ErrNotFound):
+        respondError(w, 404, "not found")
+    case errors.Is(err, service.ErrValidaiton):
+        respondError(w, 400, err.Error()) // safe: these messages are user-facing by design
+    default:
+        respondError(w, 500, "internal server error")
+    }
+}
+```
