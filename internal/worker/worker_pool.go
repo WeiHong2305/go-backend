@@ -9,6 +9,7 @@ import (
 
 	"go-backend/internal/metrics"
 	"go-backend/internal/model"
+	"go-backend/internal/retry"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -153,7 +154,10 @@ func (p *Pool) scheduleRetry(ctx context.Context, workerID int, job *model.Job, 
 		p.metrics.RecordJobRetry(ctx, job.Type, job.RetryCount)
 	}
 
-	delay := time.Duration(1<<job.RetryCount) * time.Second
+	delay := retry.Config{
+		BaseDelay: time.Second,
+		MaxDelay:  30 * time.Second,
+	}.Delay(job.RetryCount - 1)
 	slog.Warn("job failed, scheduling retry",
 		"worker_id", workerID,
 		"job_id", job.ID,
