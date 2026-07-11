@@ -231,12 +231,19 @@ A retry storm happens when many clients retry failed requests simultaneously, am
 
 Spreads retries over time and gives the service breathing room. But still **Synchronized**, just less frequently.
 
+**Tradeoff**
+1. Slower recovery for the client
+2. Longer total time to exhaust retries (cap solves this)
+3. Full jitter can produce near-zero delays
+4. Stale requests complete after user has given up (context solves this)
+5. Resource holding during wait (gorouting, connection, request context)
+
 ### Jitter solves synchronization
 
 Jitter adds randomness to the wait
 
 ```go
-// Widest spread
+// Widest spread (Full jitter) - Completes all work fastest and creates the lowest peak load on the server, because it fills the time windows evenly rather than clustering
 wait = random(0, baseDelay * 2^attempt)
 
 // Common alternative (Equal jitter)
