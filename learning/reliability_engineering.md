@@ -250,3 +250,33 @@ wait = random(0, baseDelay * 2^attempt)
 temp = baseDelay * 2^attempt
 wait = temp/2 + random(0, temp/2)
 ```
+
+
+# Engineering Thinking
+
+1. Why shouldn't every operation retry forever?
+
+- Multipling load - retry storms cause cascading failures on an already struggling service
+- Resource exhaustion - each pending retry holds a goroutine, connection, memory indefinitely
+- Stale work - by the time a late retry succeeds, the caller has moved on
+- Permanent failures exist - retrying a 404, validation error, or permission denied will never succeed
+
+2. Why are timeouts essential even when everything usually works?
+
+- Timeouts **bound the worst case** - without them, a normally-50ms call can hang for minutes, holding resources the entire time.
+- Systems must be designed for the 99.9th percentile, not the average
+- Timeouts free resources back to serve other requests, preventing one slow dependency from taking the whole system down.
+
+3. What happens if a request is cancelled halfway through updating multiple resources?
+-
+- Single-system (multiple DB writes): wrap in a transaction - all succeed or all roll back, no partial state
+- Cross-system (DB + cache, DB + external API): transactions don't help across boundaries. Use:
+    - Idempotency keys - so retries don't cause duplicates
+    - Saga pattern - compensating actions to undo partial work (e.g., refund a charge)
+    - Outbox pattern - write event to DB in the same transaction, publish to other systems separately
+
+4. If a background worker crashes while processing a job, how can the system recover?
+
+- Jobs stay in a persistent queue and reappear if no acknowledgment within a deadline (visibility timeout)
+- This gives **at-least-once-delivery** - the job will eventually be processed
+- Handlers must be **idempotent** - since redelivery means the job might run twice, repeated execution must produce the same result (e.g., checkpoint which rows are done, skip on retry)
