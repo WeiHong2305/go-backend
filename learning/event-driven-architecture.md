@@ -36,8 +36,8 @@
 |---|---|---|
 |Direct|Route by exact matching key|`payment.success` -> payment queue only|
 |Fanout|Broadcast to ALL bound queues|Order placed -> email queue, inventory queue, analytics queue all get it|
-|Topic|Route by pattern matching|`order.*` matches `order.created`, `order.cancelled`|
-> This is RabbitMQ terminology (but routing concept is similar).
+|Topic|Route by pattern matching (`*` = one word, `#` = zero or more)|`order.*` matches `order.created`; `order.#` matches `order.created.us`|
+|Headers|Match on message headers (key-value pairs), ignores routing key|Route by `{ "format": "pdf", "region": "us" }` with `x-match: all/any`| 
 
 **Binding**
 
@@ -57,9 +57,14 @@ The named category a message belongs tp. Producers publish to a topic, consumers
 
 Multiple instances of the same consumer sharing the load. Each message goes to **one** of them.
 
-**Dead Letter Queue (DLQ)**
+**Dead Letter Exchange (CLX) / Dead Letter Queue (DLQ)**
 
-Where messages go after failing too many times. Instead of retrying forever or dropping the message, it's moved to a separate queue for manual inspection.
+A DLX is a normal exchange designated as the fallback for a queue. Messages are dead-lettered when:
+- Consumer rejects (nack without requeue)
+- TTL expires
+- Queue length limit exceeded
+
+The DLQ routes to a DQL for manual inspection. Can have its own bindings for different routing of failed messages.
 
 **Acknowledgment (Ack)**
 
@@ -91,4 +96,16 @@ When consumers can't keep up, the queue grows. Backpressure is the mechanism to 
 |Meaning| "This happened" | "Do this" |
 |Example| `OrderPlaced` | `SendConfirmationEmail` |
 |Coupling| Producer doesn't know/care who listens | Producer knows what action it wants |
-|Failure| Not the producer's problem|Producer may need to know if is failed|
+|Failure| Not the producer's problem|Producer may need to know if it failed|
+
+# Kafka vs RabbitMQ
+
+| | Kafka | RabbitMQ |
+|---|---|---|
+| Mental model | Append-only log that everyone reads | Post office that delivers and forgets |
+| Message lifetime | Retained regardless of consumption | Deleted after ack |
+| Consumer model | Pull (consumer controls pace) | Push (broker delivers to consumer) |
+| Replay | Yes - any consumer can rewind | No - once ack'd, gone |
+| Routing complexity | Minimal (topic + partition key) | Rich (exchanges, bindings, patterns) |
+| Ordering | Per-partition guarantee | Per-queue guarantee |
+| Throughput | Very high (append-only disk writes) | Moderate (per-message broker overhead)
