@@ -74,7 +74,7 @@ func main() {
 	}
 
 	jobSvc := service.NewJobService(mq.JobPubCh, mq.JobQ.Name)
-	pool := worker.NewPool(mq.JobConCh, mq.JobQ.Name, 4, m)
+	pool := worker.NewPool(mq.JobConCh, mq.JobPubCh, mq.JobQ.Name, mq.RetryQ.Name, 4, m)
 	pool.Register(model.JobTypeMovieImport, handlers.ImportMovies(movieSvc))
 	pool.Start()
 

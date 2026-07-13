@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,26 +26,30 @@ const jobTimeout = 5 * time.Minute
 type HandlerFunc func(ctx context.Context, job *model.Job) error
 
 type Pool struct {
-	ch        *amqp.Channel
-	queueName string
-	workers   int
-	wg        sync.WaitGroup
-	handlers  map[string]HandlerFunc
-	baseCtx   context.Context
-	cancel    context.CancelFunc
-	metrics   *metrics.Metrics
+	conCh          *amqp.Channel
+	pubCh          *amqp.Channel
+	queueName      string
+	retryQueueName string
+	workers        int
+	wg             sync.WaitGroup
+	handlers       map[string]HandlerFunc
+	baseCtx        context.Context
+	cancel         context.CancelFunc
+	metrics        *metrics.Metrics
 }
 
-func NewPool(ch *amqp.Channel, queueName string, workers int, m *metrics.Metrics) *Pool {
+func NewPool(conCh, pubCh *amqp.Channel, queueName string, retryQueueName string, workers int, m *metrics.Metrics) *Pool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Pool{
-		ch:        ch,
-		queueName: queueName,
-		workers:   workers,
-		handlers:  make(map[string]HandlerFunc),
-		baseCtx:   ctx,
-		cancel:    cancel,
-		metrics:   m,
+		conCh:          conCh,
+		pubCh:          pubCh,
+		queueName:      queueName,
+		retryQueueName: retryQueueName,
+		workers:        workers,
+		handlers:       make(map[string]HandlerFunc),
+		baseCtx:        ctx,
+		cancel:         cancel,
+		metrics:        m,
 	}
 }
 
@@ -53,12 +58,12 @@ func (p *Pool) Register(jobType string, h HandlerFunc) {
 }
 
 func (p *Pool) Start() {
-	if err := p.ch.Qos(p.workers, 0, false); err != nil {
+	if err := p.conCh.Qos(p.workers, 0, false); err != nil {
 		slog.Error("failed to set QoS", "error", err)
 		os.Exit(1)
 	}
 
-	jobMsgs, err := p.ch.Consume(
+	jobMsgs, err := p.conCh.Consume(
 		p.queueName,
 		"",
 		false,
@@ -186,7 +191,34 @@ func (p *Pool) scheduleRetry(ctx context.Context, workerID int, jobMsg amqp.Deli
 		BaseDelay: time.Second,
 		MaxDelay:  30 * time.Second,
 	}.Delay(job.RetryCount - 1)
-	slog.Warn("job failed, scheduling retry",
+
+	body, marshallErr := json.Marshal(job)
+	if marshallErr != nil {
+		slog.Error("failed to marshal retry job", "error", marshallErr, "job_id", job.ID)
+		jobMsg.Nack(false, false)
+		return
+	}
+
+	pubErr := p.pubCh.PublishWithContext(ctx,
+		"",
+		p.retryQueueName,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType:  "application/json",
+			DeliveryMode: amqp.Persistent,
+			Expiration:   strconv.FormatInt(delay.Milliseconds(), 10),
+			Body:         body,
+		},
+	)
+	if pubErr != nil {
+		slog.Error("failed to publish retry", "error", pubErr, "job_id", job.ID)
+		jobMsg.Nack(false, true)
+		return
+	}
+
+	jobMsg.Ack(false)
+	slog.Warn("job failed, scheduled retry via DLX",
 		"worker_id", workerID,
 		"job_id", job.ID,
 		"retry", job.RetryCount,

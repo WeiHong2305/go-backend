@@ -20,6 +20,7 @@ type RabbitMQ struct {
 	JobPubCh *amqp.Channel
 	JobConCh *amqp.Channel
 	JobQ     amqp.Queue
+	RetryQ   amqp.Queue
 }
 
 func newRabbitMQ() *RabbitMQ {
@@ -43,11 +44,25 @@ func newRabbitMQ() *RabbitMQ {
 		},
 	))
 
+	retryQ := must(jobPubCh.QueueDeclare(
+		"jobs.retry",
+		true,
+		false,
+		false,
+		false,
+		amqp.Table{
+			amqp.QueueTypeArg:           amqp.QueueTypeQuorum,
+			"x-dead-letter-exchange":    "",
+			"x-dead-letter-routing-key": "jobs",
+		},
+	))
+
 	return &RabbitMQ{
 		Conn:     conn,
 		JobPubCh: jobPubCh,
 		JobConCh: jobConCh,
 		JobQ:     jobQ,
+		RetryQ:   retryQ,
 	}
 }
 
