@@ -73,7 +73,7 @@ func (p *Pool) Start() {
 		nil,
 	)
 	if err != nil {
-		slog.Error("failed to register a consumer")
+		slog.Error("failed to register a consumer", "error", err)
 		os.Exit(1)
 	}
 
@@ -85,7 +85,8 @@ func (p *Pool) Start() {
 			for jobMsg := range jobMsgs {
 				job := model.Job{}
 				if err := json.Unmarshal(jobMsg.Body, &job); err != nil {
-					slog.Error("failed to unmarshal job message: %w", err)
+					slog.Error("failed to unmarshal job message", "error", err)
+					continue
 				}
 				p.dispatch(id, jobMsg, &job)
 			}

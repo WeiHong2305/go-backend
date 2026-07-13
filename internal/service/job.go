@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"go-backend/internal/model"
 	"log/slog"
 	"time"
@@ -36,7 +37,8 @@ func (j *jobService) AddJob(ctx context.Context, jobType string, payload model.J
 	}
 	body, err := json.Marshal(job)
 	if err != nil {
-		slog.Error("failed to marshal job to JSON: %w", err)
+		slog.Error("failed to marshal job to JSON", "error", err)
+		return model.JobRespond{}, fmt.Errorf("marshal job: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -54,7 +56,8 @@ func (j *jobService) AddJob(ctx context.Context, jobType string, payload model.J
 		},
 	)
 	if err != nil {
-		slog.Error("failed to publish a job message: %w", err)
+		slog.Error("failed to publish a job message", "error", err)
+		return model.JobRespond{}, fmt.Errorf("publish job: %w", err)
 	}
 
 	return model.JobRespond{
