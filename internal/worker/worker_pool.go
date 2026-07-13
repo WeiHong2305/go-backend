@@ -30,6 +30,7 @@ type Pool struct {
 	pubCh          *amqp.Channel
 	queueName      string
 	retryQueueName string
+	consumerTag    string
 	workers        int
 	wg             sync.WaitGroup
 	handlers       map[string]HandlerFunc
@@ -63,9 +64,10 @@ func (p *Pool) Start() {
 		os.Exit(1)
 	}
 
+	p.consumerTag = "worker-pool"
 	jobMsgs, err := p.conCh.Consume(
 		p.queueName,
-		"",
+		p.consumerTag,
 		false,
 		false,
 		false,
@@ -97,6 +99,10 @@ func (p *Pool) Start() {
 }
 
 func (p *Pool) Stop(timeout time.Duration) error {
+	if err := p.conCh.Cancel(p.consumerTag, false); err != nil {
+		slog.Error("failed to cancel consumer", "error", err)
+	}
+
 	done := make(chan struct{})
 	go func() {
 		p.wg.Wait()
