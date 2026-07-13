@@ -56,10 +56,8 @@ func main() {
 	db := newDatabase()
 	defer db.Close()
 
-	queueConn, jobCh, jobQ := newRabbitMQ()
-	defer queueConn.Close()
-	defer jobCh.Close()
-	jobQueueName := jobQ.Name
+	mq := newRabbitMQ()
+	defer mq.Close()
 
 	redisCfg := newRedisClient()
 	defer redisCfg.client.Close()
@@ -75,8 +73,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	jobSvc := service.NewJobService(jobCh, jobQueueName)
-	pool := worker.NewPool(jobCh, jobQueueName, 4, m)
+	jobSvc := service.NewJobService(mq.JobPubCh, mq.JobQ.Name)
+	pool := worker.NewPool(mq.JobConCh, mq.JobQ.Name, 4, m)
 	pool.Register(model.JobTypeMovieImport, handlers.ImportMovies(movieSvc))
 	pool.Start()
 
