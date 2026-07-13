@@ -39,8 +39,6 @@ func main() {
 	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: loglevel})
 	slog.SetDefault(slog.New(logging.NewContextHandler(jsonHandler)))
 
-	jobQueue := make(chan model.Job, 100)
-
 	_, tracingShutdown, err := tracing.New(context.Background())
 	if err != nil {
 		slog.Error("failed to initialize tracing", "error", err)
@@ -58,6 +56,11 @@ func main() {
 	db := newDatabase()
 	defer db.Close()
 
+	queueConn, jobCh, jobQ := newRabbitMQ()
+	defer queueConn.Close()
+	defer jobCh.Close()
+	jobQueueName := jobQ.Name
+
 	redisCfg := newRedisClient()
 	defer redisCfg.client.Close()
 
@@ -72,9 +75,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	stopCh := make(chan struct{})
-	jobSvc := service.NewJobService(jobQueue)
-	pool := worker.NewPool(jobQueue, 4, stopCh, m)
+	jobSvc := service.NewJobService(jobCh, jobQueueName)
+	pool := worker.NewPool(jobCh, jobQueueName, 4, m)
 	pool.Register(model.JobTypeMovieImport, handlers.ImportMovies(movieSvc))
 	pool.Start()
 
@@ -131,7 +133,6 @@ func main() {
 
 	<-quit
 	slog.Info("shutting down - send signal again to force exit")
-	close(stopCh)
 
 	shutdownDone := make(chan struct{})
 	go func() {
@@ -142,8 +143,6 @@ func main() {
 		if err := server.Shutdown(httpCtx); err != nil {
 			slog.Error("HTTP server forced shutdown", "error", err)
 		}
-
-		close(jobQueue)
 
 		if err := pool.Stop(35 * time.Second); err != nil {
 			slog.Error("worker pool forced shutdown", "error", err)

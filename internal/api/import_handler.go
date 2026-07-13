@@ -117,7 +117,7 @@ func ImportMovieHandler(svc service.JobService, idemCache cache.Cache) http.Hand
 			slog.ErrorContext(r.Context(), "failed to set idempotency placeholder", "key", idempotencyKey, "error", err)
 		}
 
-		resp, err := svc.AddJob(model.JobTypeMovieImport, &model.MovieImportPayload{Movies: movies})
+		resp, err := svc.AddJob(r.Context(), model.JobTypeMovieImport, &model.MovieImportPayload{Movies: movies})
 		if mapServiceError(w, r, err) {
 			idemCache.Delete(r.Context(), idempotencyKey)
 			return

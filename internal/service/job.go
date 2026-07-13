@@ -1,27 +1,30 @@
 package service
 
 import (
-	"fmt"
+	"context"
+	"encoding/json"
 	"go-backend/internal/model"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type JobService interface {
-	AddJob(jobType string, payload model.JobPayload) (model.JobRespond, error)
+	AddJob(ctx context.Context, jobType string, payload model.JobPayload) (model.JobRespond, error)
 }
 
 type jobService struct {
-	queue chan model.Job
+	ch        *amqp.Channel
+	queueName string
 }
 
-func NewJobService(queue chan model.Job) *jobService {
-	return &jobService{queue: queue}
+func NewJobService(ch *amqp.Channel, queueName string) *jobService {
+	return &jobService{ch: ch, queueName: queueName}
 }
 
-func (j *jobService) AddJob(jobType string, payload model.JobPayload) (model.JobRespond, error) {
+func (j *jobService) AddJob(ctx context.Context, jobType string, payload model.JobPayload) (model.JobRespond, error) {
 	now := time.Now()
 	job := model.Job{
 		ID:        uuid.New().String(),
@@ -31,15 +34,27 @@ func (j *jobService) AddJob(jobType string, payload model.JobPayload) (model.Job
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	body, err := json.Marshal(job)
+	if err != nil {
+		slog.Error("failed to marshal job to JSON: %w", err)
+	}
 
-	select {
-	case j.queue <- job:
-		slog.Info("job created",
-			"job_id", job.ID,
-			"type", job.Type,
-		)
-	default:
-		return model.JobRespond{}, fmt.Errorf("job queue is full: %w", ErrUnavailable)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	err = j.ch.PublishWithContext(ctx,
+		"",
+		j.queueName,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType:  "application/json",
+			DeliveryMode: amqp.Persistent,
+			Body:         body,
+		},
+	)
+	if err != nil {
+		slog.Error("failed to publish a job message: %w", err)
 	}
 
 	return model.JobRespond{

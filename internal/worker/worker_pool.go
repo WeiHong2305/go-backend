@@ -2,8 +2,10 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"go-backend/internal/model"
 	"go-backend/internal/retry"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -22,26 +25,26 @@ const jobTimeout = 5 * time.Minute
 type HandlerFunc func(ctx context.Context, job *model.Job) error
 
 type Pool struct {
-	queue    chan model.Job
-	workers  int
-	wg       sync.WaitGroup
-	handlers map[string]HandlerFunc
-	stopCh   <-chan struct{}
-	baseCtx  context.Context
-	cancel   context.CancelFunc
-	metrics  *metrics.Metrics
+	ch        *amqp.Channel
+	queueName string
+	workers   int
+	wg        sync.WaitGroup
+	handlers  map[string]HandlerFunc
+	baseCtx   context.Context
+	cancel    context.CancelFunc
+	metrics   *metrics.Metrics
 }
 
-func NewPool(queue chan model.Job, workers int, stopCh <-chan struct{}, m *metrics.Metrics) *Pool {
+func NewPool(ch *amqp.Channel, queueName string, workers int, m *metrics.Metrics) *Pool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Pool{
-		queue:    queue,
-		workers:  workers,
-		handlers: make(map[string]HandlerFunc),
-		stopCh:   stopCh,
-		baseCtx:  ctx,
-		cancel:   cancel,
-		metrics:  m,
+		ch:        ch,
+		queueName: queueName,
+		workers:   workers,
+		handlers:  make(map[string]HandlerFunc),
+		baseCtx:   ctx,
+		cancel:    cancel,
+		metrics:   m,
 	}
 }
 
@@ -50,13 +53,31 @@ func (p *Pool) Register(jobType string, h HandlerFunc) {
 }
 
 func (p *Pool) Start() {
+	jobMsgs, err := p.ch.Consume(
+		p.queueName,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		slog.Error("failed to register a consumer")
+		os.Exit(1)
+	}
+
 	for i := range p.workers {
 		p.wg.Add(1)
 		go func(id int) {
 			defer p.wg.Done()
 			slog.Info("worker started", "worker_id", id)
-			for job := range p.queue {
-				p.dispatch(id, &job)
+			for jobMsg := range jobMsgs {
+				job := model.Job{}
+				if err := json.Unmarshal(jobMsg.Body, &job); err != nil {
+					slog.Error("failed to unmarshal job message: %w", err)
+				}
+				p.dispatch(id, jobMsg, &job)
 			}
 			slog.Info("worker stopped", "worker_id", id)
 		}(i)
@@ -78,7 +99,7 @@ func (p *Pool) Stop(timeout time.Duration) error {
 	}
 }
 
-func (p *Pool) dispatch(workerID int, job *model.Job) {
+func (p *Pool) dispatch(workerID int, jobMsg amqp.Delivery, job *model.Job) {
 	h, ok := p.handlers[job.Type]
 	if !ok {
 		slog.Warn("no handler registered for job type",
@@ -115,10 +136,11 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 	if err := h(ctx, job); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		p.handleFailure(ctx, workerID, job, err)
+		p.handleFailure(ctx, workerID, jobMsg, job, err)
 		return
 	}
 
+	jobMsg.Ack(false)
 	job.Status = model.Completed
 	if p.metrics != nil {
 		p.metrics.RecordJobCompleted(ctx, job.Type, time.Since(start))
@@ -129,12 +151,13 @@ func (p *Pool) dispatch(workerID int, job *model.Job) {
 	)
 }
 
-func (p *Pool) handleFailure(ctx context.Context, workerID int, job *model.Job, err error) {
+func (p *Pool) handleFailure(ctx context.Context, workerID int, jobMsg amqp.Delivery, job *model.Job, err error) {
 	if job.RetryCount < model.MaxRetries {
-		p.scheduleRetry(ctx, workerID, job, err)
+		p.scheduleRetry(ctx, workerID, jobMsg, job, err)
 		return
 	}
 
+	jobMsg.Nack(false, false)
 	job.Status = model.Failed
 	if p.metrics != nil {
 		p.metrics.RecordJobFailed(ctx, job.Type)
@@ -147,7 +170,7 @@ func (p *Pool) handleFailure(ctx context.Context, workerID int, job *model.Job, 
 	)
 }
 
-func (p *Pool) scheduleRetry(ctx context.Context, workerID int, job *model.Job, err error) {
+func (p *Pool) scheduleRetry(ctx context.Context, workerID int, jobMsg amqp.Delivery, job *model.Job, err error) {
 	job.RetryCount++
 	job.Status = model.Pending
 	if p.metrics != nil {
@@ -165,23 +188,8 @@ func (p *Pool) scheduleRetry(ctx context.Context, workerID int, job *model.Job, 
 		"delay", delay,
 		"error", err,
 	)
-
 	go func() {
-		select {
-		case <-p.stopCh:
-			slog.Warn("shutdown: dropping retry",
-				"job_id", job.ID,
-				"retry", job.RetryCount,
-			)
-			return
-		case <-time.After(delay):
-		}
-		select {
-		case p.queue <- *job:
-		case <-p.stopCh:
-			slog.Warn("shutdown: could not requeue job",
-				"job_id", job.ID,
-			)
-		}
+		<-time.After(delay)
+		jobMsg.Nack(false, true)
 	}()
 }
