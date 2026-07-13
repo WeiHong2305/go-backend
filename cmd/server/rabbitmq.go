@@ -7,6 +7,14 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+func must[T any](val T, err error) T {
+	if err != nil {
+		slog.Error("fatal startup error", "error", err)
+		os.Exit(1)
+	}
+	return val
+}
+
 type RabbitMQ struct {
 	Conn     *amqp.Connection
 	JobPubCh *amqp.Channel
@@ -15,24 +23,16 @@ type RabbitMQ struct {
 }
 
 func newRabbitMQ() *RabbitMQ {
-	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
-	if err != nil {
-		slog.Error("failed to connect to RabbitMQ", "error", err)
-		os.Exit(1)
+	url := os.Getenv("RABBITMQ_URL")
+	if url == "" {
+		url = "amqp://guest:guest@rabbitmq:5672/"
+		slog.Warn("RABBITMQ_URL not set, using default local connection string")
 	}
 
-	jobPubCh, err := conn.Channel()
-	if err != nil {
-		slog.Error("failed to open job publish channel", "error", err)
-		os.Exit(1)
-	}
-
-	jobConCh, err := conn.Channel()
-	if err != nil {
-		slog.Error("failed to open consume channel", "error", err)
-	}
-
-	jobQ, err := jobPubCh.QueueDeclare(
+	conn := must(amqp.Dial(url))
+	jobPubCh := must(conn.Channel())
+	jobConCh := must(conn.Channel())
+	jobQ := must(jobPubCh.QueueDeclare(
 		"jobs",
 		true,
 		false,
@@ -41,11 +41,7 @@ func newRabbitMQ() *RabbitMQ {
 		amqp.Table{
 			amqp.QueueTypeArg: amqp.QueueTypeQuorum,
 		},
-	)
-	if err != nil {
-		slog.Error("failed to declare jobs queue", "error", err)
-		os.Exit(1)
-	}
+	))
 
 	return &RabbitMQ{
 		Conn:     conn,
