@@ -53,6 +53,11 @@ func (p *Pool) Register(jobType string, h HandlerFunc) {
 }
 
 func (p *Pool) Start() {
+	if err := p.ch.Qos(p.workers, 0, false); err != nil {
+		slog.Error("failed to set QoS", "error", err)
+		os.Exit(1)
+	}
+
 	jobMsgs, err := p.ch.Consume(
 		p.queueName,
 		"",
