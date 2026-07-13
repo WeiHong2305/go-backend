@@ -86,6 +86,7 @@ func (p *Pool) Start() {
 				job := model.Job{}
 				if err := json.Unmarshal(jobMsg.Body, &job); err != nil {
 					slog.Error("failed to unmarshal job message", "error", err)
+					jobMsg.Nack(false, false)
 					continue
 				}
 				p.dispatch(id, jobMsg, &job)
@@ -118,6 +119,7 @@ func (p *Pool) dispatch(workerID int, jobMsg amqp.Delivery, job *model.Job) {
 			"job_id", job.ID,
 			"type", job.Type,
 		)
+		jobMsg.Nack(false, false)
 		return
 	}
 
@@ -226,8 +228,4 @@ func (p *Pool) scheduleRetry(ctx context.Context, workerID int, jobMsg amqp.Deli
 		"delay", delay,
 		"error", err,
 	)
-	go func() {
-		<-time.After(delay)
-		jobMsg.Nack(false, true)
-	}()
 }
