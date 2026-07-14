@@ -35,15 +35,18 @@ services:
       - 15672:15672
       - 15692:15692
     environment:
-      - RABBITMQ_ENABLED_PLUGINS=rabbitmq_management,rabbitmq_prometheus
+      - RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      - RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
     restart: always
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq-plugins.conf:/etc/rabbitmq/enabled_plugins
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   api:
     build:
@@ -74,6 +77,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     depends_on:
       - api
+      - rabbitmq
 
   tempo:
     image: grafana/tempo:r260-85ad7d8-1931-1
