@@ -37,6 +37,9 @@ func (j *jobService) AddJob(ctx context.Context, jobType string, payload model.J
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	if err := job.MarshalPayload(); err != nil {
+		return model.JobRespond{}, fmt.Errorf("marshal payload: %w", err)
+	}
 	body, err := json.Marshal(job)
 	if err != nil {
 		return model.JobRespond{}, fmt.Errorf("marshal job: %w", err)

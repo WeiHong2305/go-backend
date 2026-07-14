@@ -95,6 +95,11 @@ func (p *Pool) Start() {
 					jobMsg.Nack(false, false)
 					continue
 				}
+				if err := job.UnmarshalPayload(); err != nil {
+					slog.Error("failed to unmarshal job payload", "error", err, "job_id", job.ID, "type", job.Type)
+					jobMsg.Nack(false, false)
+					continue
+				}
 				p.dispatch(id, jobMsg, &job)
 			}
 			slog.Info("worker stopped", "worker_id", id)
@@ -204,6 +209,12 @@ func (p *Pool) scheduleRetry(ctx context.Context, workerID int, jobMsg amqp.Deli
 		BaseDelay: time.Second,
 		MaxDelay:  30 * time.Second,
 	}.Delay(job.RetryCount - 1)
+
+	if marshalErr := job.MarshalPayload(); marshalErr != nil {
+		slog.Error("failed to marshal retry payload", "error", marshalErr, "job_id", job.ID)
+		jobMsg.Nack(false, false)
+		return
+	}
 
 	body, marshallErr := json.Marshal(job)
 	if marshallErr != nil {
