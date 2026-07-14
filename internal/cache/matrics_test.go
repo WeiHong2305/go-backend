@@ -27,7 +27,7 @@ func (m *mockCache) Delete(ctx context.Context, key string) error {
 
 func newTestMetrics(t *testing.T) *metrics.Metrics {
 	t.Helper()
-	m, err := metrics.New(func() int { return 0 })
+	m, err := metrics.New()
 	if err != nil {
 		t.Fatalf("metrics.New: %v", err)
 	}
