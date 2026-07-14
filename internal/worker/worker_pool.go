@@ -21,13 +21,17 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+type RetryPublisher interface {
+	Publish(ctx context.Context, queue string, body []byte, expiration string) error
+}
+
 const jobTimeout = 5 * time.Minute
 
 type HandlerFunc func(ctx context.Context, job *model.Job) error
 
 type Pool struct {
 	conCh          *amqp.Channel
-	pubCh          *amqp.Channel
+	retryPub       RetryPublisher
 	queueName      string
 	retryQueueName string
 	consumerTag    string
@@ -39,11 +43,11 @@ type Pool struct {
 	metrics        *metrics.Metrics
 }
 
-func NewPool(conCh, pubCh *amqp.Channel, queueName string, retryQueueName string, workers int, m *metrics.Metrics) *Pool {
+func NewPool(conCh *amqp.Channel, retryPub RetryPublisher, queueName string, retryQueueName string, workers int, m *metrics.Metrics) *Pool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Pool{
 		conCh:          conCh,
-		pubCh:          pubCh,
+		retryPub:       retryPub,
 		queueName:      queueName,
 		retryQueueName: retryQueueName,
 		workers:        workers,
@@ -208,19 +212,8 @@ func (p *Pool) scheduleRetry(ctx context.Context, workerID int, jobMsg amqp.Deli
 		return
 	}
 
-	pubErr := p.pubCh.PublishWithContext(ctx,
-		"",
-		p.retryQueueName,
-		false,
-		false,
-		amqp.Publishing{
-			ContentType:  "application/json",
-			DeliveryMode: amqp.Persistent,
-			Expiration:   strconv.FormatInt(delay.Milliseconds(), 10),
-			Body:         body,
-		},
-	)
-	if pubErr != nil {
+	expiration := strconv.FormatInt(delay.Milliseconds(), 10)
+	if pubErr := p.retryPub.Publish(ctx, p.retryQueueName, body, expiration); pubErr != nil {
 		slog.Error("failed to publish retry", "error", pubErr, "job_id", job.ID)
 		jobMsg.Nack(false, true)
 		return

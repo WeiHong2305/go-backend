@@ -5,24 +5,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-backend/internal/model"
-	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
-	amqp "github.com/rabbitmq/amqp091-go"
 )
+
+type JobPublisher interface {
+	Publish(ctx context.Context, queue string, body []byte, expiration string) error
+}
 
 type JobService interface {
 	AddJob(ctx context.Context, jobType string, payload model.JobPayload) (model.JobRespond, error)
 }
 
 type jobService struct {
-	ch        *amqp.Channel
+	publisher JobPublisher
 	queueName string
 }
 
-func NewJobService(ch *amqp.Channel, queueName string) *jobService {
-	return &jobService{ch: ch, queueName: queueName}
+func NewJobService(publisher JobPublisher, queueName string) *jobService {
+	return &jobService{publisher: publisher, queueName: queueName}
 }
 
 func (j *jobService) AddJob(ctx context.Context, jobType string, payload model.JobPayload) (model.JobRespond, error) {
@@ -37,26 +39,13 @@ func (j *jobService) AddJob(ctx context.Context, jobType string, payload model.J
 	}
 	body, err := json.Marshal(job)
 	if err != nil {
-		slog.Error("failed to marshal job to JSON", "error", err)
 		return model.JobRespond{}, fmt.Errorf("marshal job: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	err = j.ch.PublishWithContext(ctx,
-		"",
-		j.queueName,
-		false,
-		false,
-		amqp.Publishing{
-			ContentType:  "application/json",
-			DeliveryMode: amqp.Persistent,
-			Body:         body,
-		},
-	)
-	if err != nil {
-		slog.Error("failed to publish a job message", "error", err)
+	if err := j.publisher.Publish(ctx, j.queueName, body, ""); err != nil {
 		return model.JobRespond{}, fmt.Errorf("publish job: %w", err)
 	}
 
@@ -64,5 +53,4 @@ func (j *jobService) AddJob(ctx context.Context, jobType string, payload model.J
 		ID:     job.ID,
 		Status: job.Status,
 	}, nil
-
 }

@@ -46,7 +46,7 @@ func main() {
 	}
 	defer tracingShutdown(context.Background())
 
-	m, err := metrics.New(func() int { return len(jobQueue) })
+	m, err := metrics.New(func() int { return 0 })
 	if err != nil {
 		slog.Error("failed to initialize metrics", "error", err)
 		os.Exit(1)
@@ -58,6 +58,7 @@ func main() {
 
 	mq := newRabbitMQ()
 	defer mq.Close()
+	mq.HandleReconnect()
 
 	redisCfg := newRedisClient()
 	defer redisCfg.client.Close()
@@ -73,8 +74,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	jobSvc := service.NewJobService(mq.JobPubCh, mq.JobQ.Name)
-	pool := worker.NewPool(mq.JobConCh, mq.JobPubCh, mq.JobQ.Name, mq.RetryQ.Name, 4, m)
+	jobSvc := service.NewJobService(mq, mq.JobQ.Name)
+	pool := worker.NewPool(mq.JobConCh, mq, mq.JobQ.Name, mq.RetryQ.Name, 4, m)
 	pool.Register(model.JobTypeMovieImport, handlers.ImportMovies(movieSvc))
 	pool.Start()
 

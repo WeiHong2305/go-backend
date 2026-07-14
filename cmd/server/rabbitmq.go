@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"go-backend/internal/retry"
 	"log/slog"
 	"os"
+	"sync"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -16,11 +21,14 @@ func must[T any](val T, err error) T {
 }
 
 type RabbitMQ struct {
+	mu       sync.RWMutex
 	Conn     *amqp.Connection
 	JobPubCh *amqp.Channel
 	JobConCh *amqp.Channel
 	JobQ     amqp.Queue
 	RetryQ   amqp.Queue
+	url      string
+	closed   chan struct{}
 }
 
 func newRabbitMQ() *RabbitMQ {
@@ -30,10 +38,23 @@ func newRabbitMQ() *RabbitMQ {
 		slog.Warn("RABBITMQ_URL not set, using default local connection string")
 	}
 
-	conn := must(amqp.Dial(url))
-	jobPubCh := must(conn.Channel())
-	jobConCh := must(conn.Channel())
-	jobQ := must(jobPubCh.QueueDeclare(
+	mq := &RabbitMQ{
+		url:    url,
+		closed: make(chan struct{}),
+	}
+	mq.connect()
+	return mq
+}
+
+func (mq *RabbitMQ) connect() {
+	mq.Conn = must(amqp.Dial(mq.url))
+
+	mq.JobPubCh = must(mq.Conn.Channel())
+	must(struct{}{}, mq.JobPubCh.Confirm(false))
+
+	mq.JobConCh = must(mq.Conn.Channel())
+
+	mq.JobQ = must(mq.JobPubCh.QueueDeclare(
 		"jobs",
 		true,
 		false,
@@ -44,7 +65,7 @@ func newRabbitMQ() *RabbitMQ {
 		},
 	))
 
-	retryQ := must(jobPubCh.QueueDeclare(
+	mq.RetryQ = must(mq.JobPubCh.QueueDeclare(
 		"jobs.retry",
 		true,
 		false,
@@ -56,18 +77,135 @@ func newRabbitMQ() *RabbitMQ {
 			"x-dead-letter-routing-key": "jobs",
 		},
 	))
-
-	return &RabbitMQ{
-		Conn:     conn,
-		JobPubCh: jobPubCh,
-		JobConCh: jobConCh,
-		JobQ:     jobQ,
-		RetryQ:   retryQ,
-	}
 }
 
-func (r *RabbitMQ) Close() {
-	r.JobPubCh.Close()
-	r.JobConCh.Close()
-	r.Conn.Close()
+func (mq *RabbitMQ) reconnect() error {
+	conn, err := amqp.Dial(mq.url)
+	if err != nil {
+		return fmt.Errorf("dial: %w", err)
+	}
+
+	pubCh, err := conn.Channel()
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("open publish channel: %w", err)
+	}
+	if err := pubCh.Confirm(false); err != nil {
+		conn.Close()
+		return fmt.Errorf("enable confirms: %w", err)
+	}
+
+	conCh, err := conn.Channel()
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("open consume channel: %w", err)
+	}
+
+	jobQ, err := pubCh.QueueDeclare(
+		"jobs", true, false, false, false,
+		amqp.Table{amqp.QueueTypeArg: amqp.QueueTypeQuorum},
+	)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("declare jobs queue: %w", err)
+	}
+
+	retryQ, err := pubCh.QueueDeclare(
+		"jobs.retry", true, false, false, false,
+		amqp.Table{
+			amqp.QueueTypeArg:           amqp.QueueTypeQuorum,
+			"x-dead-letter-exchange":    "",
+			"x-dead-letter-routing-key": "jobs",
+		},
+	)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("declare retry queue: %w", err)
+	}
+
+	mq.mu.Lock()
+	mq.Conn = conn
+	mq.JobPubCh = pubCh
+	mq.JobConCh = conCh
+	mq.JobQ = jobQ
+	mq.RetryQ = retryQ
+	mq.mu.Unlock()
+
+	return nil
+}
+
+func (mq *RabbitMQ) HandleReconnect() {
+	go func() {
+		for {
+			connClose := mq.Conn.NotifyClose(make(chan *amqp.Error, 1))
+
+			select {
+			case <-mq.closed:
+				return
+			case amqpErr := <-connClose:
+				if amqpErr == nil {
+					return
+				}
+				slog.Error("RabbitMQ connection lost", "error", amqpErr)
+			}
+
+			backoff := retry.Config{
+				BaseDelay:  time.Second,
+				MaxDelay:   30 * time.Second,
+				MaxRetries: 0,
+			}
+			for attempt := 0; ; attempt++ {
+				delay := backoff.Delay(attempt)
+				slog.Info("attempting RabbitMQ reconnect", "attempt", attempt+1, "delay", delay)
+				time.Sleep(delay)
+
+				if err := mq.reconnect(); err != nil {
+					slog.Error("RabbitMQ reconnect failed", "attempt", attempt+1, "error", err)
+					continue
+				}
+
+				slog.Info("RabbitMQ reconnected successfully")
+				break
+			}
+		}
+	}()
+}
+
+func (mq *RabbitMQ) Publish(ctx context.Context, queue string, body []byte, expiration string) error {
+	mq.mu.RLock()
+	ch := mq.JobPubCh
+	mq.mu.RUnlock()
+
+	confirm, err := ch.PublishWithDeferredConfirmWithContext(ctx,
+		"",
+		queue,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType:  "application/json",
+			DeliveryMode: amqp.Persistent,
+			Expiration:   expiration,
+			Body:         body,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("publish retry: %w", err)
+	}
+
+	confirmed, err := confirm.WaitContext(ctx)
+	if err != nil {
+		return fmt.Errorf("confirm timed out: %w", err)
+	}
+	if !confirmed {
+		return fmt.Errorf("broker did not confirm message")
+	}
+
+	return nil
+}
+
+func (mq *RabbitMQ) Close() {
+	close(mq.closed)
+	mq.JobPubCh.Close()
+	mq.JobConCh.Close()
+	mq.Conn.Close()
 }
