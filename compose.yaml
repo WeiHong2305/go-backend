@@ -33,6 +33,9 @@ services:
     ports:
       - 5672:5672
       - 15672:15672
+      - 15692:15692
+    environment:
+      - RABBITMQ_ENABLED_PLUGINS=rabbitmq_management,rabbitmq_prometheus
     restart: always
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
