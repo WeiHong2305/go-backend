@@ -12,6 +12,11 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const (
+	dlxExchange   = "x-dead-letter-exchange"
+	dlxRoutingKey = "x-dead-letter-routing-key"
+)
+
 func must[T any](val T, err error) T {
 	if err != nil {
 		slog.Error("fatal startup error", "error", err)
@@ -27,6 +32,7 @@ type RabbitMQ struct {
 	JobConCh *amqp.Channel
 	JobQ     amqp.Queue
 	RetryQ   amqp.Queue
+	DLQ      amqp.Queue
 	url      string
 	closed   chan struct{}
 }
@@ -54,6 +60,17 @@ func (mq *RabbitMQ) connect() {
 
 	mq.JobConCh = must(mq.Conn.Channel())
 
+	mq.DLQ = must(mq.JobPubCh.QueueDeclare(
+		"jobs.dlq",
+		true,
+		false,
+		false,
+		false,
+		amqp.Table{
+			amqp.QueueTypeArg: amqp.QueueTypeQuorum,
+		},
+	))
+
 	mq.JobQ = must(mq.JobPubCh.QueueDeclare(
 		"jobs",
 		true,
@@ -62,6 +79,8 @@ func (mq *RabbitMQ) connect() {
 		false,
 		amqp.Table{
 			amqp.QueueTypeArg: amqp.QueueTypeQuorum,
+			dlxExchange:       "",
+			dlxRoutingKey:     "jobs.dlq",
 		},
 	))
 
@@ -72,9 +91,9 @@ func (mq *RabbitMQ) connect() {
 		false,
 		false,
 		amqp.Table{
-			amqp.QueueTypeArg:           amqp.QueueTypeQuorum,
-			"x-dead-letter-exchange":    "",
-			"x-dead-letter-routing-key": "jobs",
+			amqp.QueueTypeArg: amqp.QueueTypeQuorum,
+			dlxExchange:       "",
+			dlxRoutingKey:     "jobs",
 		},
 	))
 }
@@ -101,9 +120,22 @@ func (mq *RabbitMQ) reconnect() error {
 		return fmt.Errorf("open consume channel: %w", err)
 	}
 
+	dlq, err := pubCh.QueueDeclare(
+		"jobs.qlq", true, false, false, false,
+		amqp.Table{amqp.QueueTypeArg: amqp.QueueTypeQuorum},
+	)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("declare dlq: %w", err)
+	}
+
 	jobQ, err := pubCh.QueueDeclare(
 		"jobs", true, false, false, false,
-		amqp.Table{amqp.QueueTypeArg: amqp.QueueTypeQuorum},
+		amqp.Table{
+			amqp.QueueTypeArg: amqp.QueueTypeQuorum,
+			dlxExchange:       "",
+			dlxRoutingKey:     "jobs.dlq",
+		},
 	)
 	if err != nil {
 		conn.Close()
@@ -113,9 +145,9 @@ func (mq *RabbitMQ) reconnect() error {
 	retryQ, err := pubCh.QueueDeclare(
 		"jobs.retry", true, false, false, false,
 		amqp.Table{
-			amqp.QueueTypeArg:           amqp.QueueTypeQuorum,
-			"x-dead-letter-exchange":    "",
-			"x-dead-letter-routing-key": "jobs",
+			amqp.QueueTypeArg: amqp.QueueTypeQuorum,
+			dlxExchange:       "",
+			dlxRoutingKey:     "jobs",
 		},
 	)
 	if err != nil {
@@ -127,6 +159,7 @@ func (mq *RabbitMQ) reconnect() error {
 	mq.Conn = conn
 	mq.JobPubCh = pubCh
 	mq.JobConCh = conCh
+	mq.DLQ = dlq
 	mq.JobQ = jobQ
 	mq.RetryQ = retryQ
 	mq.mu.Unlock()
