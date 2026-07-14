@@ -46,7 +46,7 @@ func main() {
 	}
 	defer tracingShutdown(context.Background())
 
-	m, err := metrics.New(func() int { return 0 })
+	m, err := metrics.New()
 	if err != nil {
 		slog.Error("failed to initialize metrics", "error", err)
 		os.Exit(1)

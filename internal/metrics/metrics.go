@@ -26,10 +26,9 @@ type Metrics struct {
 	jobsFailed          otelmetric.Int64Counter
 	jobRetries          otelmetric.Int64Counter
 	jobDuration         otelmetric.Float64Histogram
-	jobQueueDepth       otelmetric.Int64ObservableGauge
 }
 
-func New(queueLenFunc func() int) (*Metrics, error) {
+func New() (*Metrics, error) {
 	exporter, err := prometheus.New()
 	if err != nil {
 		return nil, fmt.Errorf("create prometheus exporter: %w", err)
@@ -107,17 +106,6 @@ func New(queueLenFunc func() int) (*Metrics, error) {
 		return nil, err
 	}
 
-	jobQueueDepth, err := meter.Int64ObservableGauge("jobs.queue_depth",
-		otelmetric.WithDescription("Number of jobs waiting in the queue"),
-		otelmetric.WithInt64Callback(func(_ context.Context, o otelmetric.Int64Observer) error {
-			o.Observe(int64(queueLenFunc()))
-			return nil
-		}),
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Metrics{
 		provider:            provider,
 		httpRequestsTotal:   httpRequestsTotal,
@@ -130,7 +118,6 @@ func New(queueLenFunc func() int) (*Metrics, error) {
 		jobsFailed:          jobsFailed,
 		jobRetries:          jobRetries,
 		jobDuration:         jobDuration,
-		jobQueueDepth:       jobQueueDepth,
 	}, nil
 }
 
